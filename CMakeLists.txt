@@ -14,8 +14,7 @@ include("../../../cmake/ug_plugin_includes.cmake")
 
 
 # sources
-set(SOURCES nernst_planck_plugin.cpp
-            interface_1d_fv1.cpp)
+set(SOURCES nernst_planck_plugin.cpp)
 
 message(STATUS "-------------------information regarding calciumDynamics-------------------")
 

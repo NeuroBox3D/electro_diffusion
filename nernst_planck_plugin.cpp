@@ -8,7 +8,7 @@
 #include "bridge/util.h"
 #include "bridge/util_domain_algebra_dependent.h"
 
-#include "interface_1d_fv1.h"
+#include "interface1d_fv1.h"
 
 using namespace std;
 using namespace ug::bridge;
@@ -38,14 +38,38 @@ static void DomainAlgebra(Registry& reg, string grp)
 	string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
 	string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
 
-	// p. ex.
-	//reg.add_class_< typename AMGBase<algebra_type>::LevelInformation > (string("AMGLevelInformation").append(suffix), grp)
-	//	.add_method("get_creation_time_ms", &AMGBase<algebra_type>::LevelInformation::get_creation_time_ms, "creation time of this level (in ms)");
+	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
+	{
+		typedef IInterface1DFV1<TDomain, TAlgebra> T;
+		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
+		string name = string("IInterface1DFV1").append(suffix);
+		reg.add_class_<T, TBase >(name, grp);
+		reg.add_class_to_group(name, "IInterface1DFV1", tag);
+	}
 
-	//reg.add_class_to_group(string("AMGLevelInformation").append(suffix), "AMGLevelInformation", tag);
-	//
-	// or
-	//reg.add_function("takeNuclearMeasurement",&takeNuclearMeasurement<CPUAlgebra::vector_type, ug::Domain2d>, grp.c_str() );
+	// additive nD71D interface
+	{
+		typedef AdditiveInterface1DFV1<TDomain, TAlgebra> T;
+		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
+		string name = string("AdditiveInterface1DFV1").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(const char*, const char*, const char*)>
+					  ("function(s)#high-dim constrained subset#one-dim constrained subset")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "AdditiveInterface1DFV1", tag);
+	}
+
+	// additive nD71D interface
+	{
+		typedef MultiplicativeInterface1DFV1<TDomain, TAlgebra> T;
+		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
+		string name = string("MultiplicativeInterface1DFV1").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(const char*, const char*, const char*)>
+					  ("function(s)#high-dim constrained subset#one-dim constrained subset")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);
+	}
 }
 
 /**
@@ -73,15 +97,6 @@ static void Domain(Registry& reg, string grp)
 	* // parameter information for VRL
 	* "name1 | style1 | options1 # name2 | style2 | options2 # ... "
 	*/
-
-	// implementation of ER membrane flux discretizations
-	{
-		typedef IInterface1DFV1<TDomain> T;
-		typedef IElemDisc<TDomain> TBase;
-		string name = string("IInterface1DFV1").append(suffix);
-		reg.add_class_<T, TBase >(name, grp);
-		reg.add_class_to_group(name, "IInterface1DFV1", tag);
-	}
 }
 
 /**
@@ -149,7 +164,7 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 		RegisterDimensionDependent<Functionality>(*reg,grp);
 		RegisterDomainDependent<Functionality>(*reg,grp);
 		//RegisterAlgebraDependent<Functionality>(*reg,grp);
-		//RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
+		RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
 	}
 	UG_REGISTRY_CATCH_THROW(grp);
 }

@@ -1,0 +1,371 @@
+/*
+ * interface1d_fv1.h
+ *
+ *  Created on: 06.06.2014
+ *      Author: mbreit
+ */
+
+#ifndef INTERFACE1D_FV1_H_
+#define INTERFACE1D_FV1_H_
+
+
+#include <map>
+
+#include "common/common.h"
+#include "common/math/ugmath.h"
+#include "lib_disc/spatial_disc/constraints/constraint_interface.h"
+#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
+#include "lib_disc/spatial_disc/disc_util/geom_provider.h"
+
+
+namespace ug{
+
+/// Interface class for coupling high-dimensional (2D/3D) discretizations with 1D simplifications.
+/**
+ * This class is intended to be the base class for implementations of interfaces
+ * linking a spatially fully detailed 2D/3D model, typically a "window" of a much
+ * larger geometry where only local dynamics are of interest, but where processes
+ * in remote locations still matter (e.g. for realistic boundary conditions in the
+ * window), with a 1D simplified model for the rest of the geometry.
+ *
+ * This class provides an implementation for FV discretizations of both sides of
+ * the interface.
+ *
+ * ------------------------
+ * Geometry specifications
+ * ------------------------
+ * Suppose you have the following situation: left: 2D, right: 1D
+ *
+ *	--- o --- o
+ *	    |  /  |
+ *	--- o --- O       O --- o ---
+ *	    |  /  |
+ *	--- o --- o
+ *
+ * The two nodes marked by a capital O will be referred to as "interface" nodes/vertices.
+ *
+ * Then you have to introduce constrained nodes (x) on both sides that will simulate
+ * the behaviour of a non-existing extension of the respective subdomain:
+ *
+ *	--- o --- o  ---  x
+ *	    |  /  |       |
+ *	--- o  -  O/x === x/O --- o ---
+ *	    |  /  |       |
+ *	--- o --- o  ---  x
+ *
+ * There are two vertices located at the same coordinates in the location of the
+ * interface nodes. One is the interface vertex, the other is a constrained vertex
+ * connected to the other interface vertex.
+ * Each constrained vertex is connected to exactly one non-constrained vertex, which
+ * is referred to as its "constrainer" or "constraining vertex".
+ * The two subdomains remain disconnected!
+ *
+ * The constrained vertices on the high-dimensional side, in conjunction with their
+ * respective constrainers, form new high-dimensional elements (quadrilaterals in 2D,
+ * prisms or hexahedra in 3D). A discretization on the high-dimensional side with
+ * an equivalent on the 1D side that is to be coupled by means of this interface
+ * will have to be extended to those new elements.
+ * This holds for the 1D side analogously.
+ *
+ * Subsets:
+ * The constrained manifold (at least the vertices) of the high-dimensional side
+ * must be (exclusively) assigned to a subset that needs to be specified in the
+ * interface constructor. The same is necessary for the (single) 1D constrained
+ * vertex.
+ *
+ * -------------
+ * How it works
+ * -------------
+ * The coupling is realized by constraints (this is why this base class is derived
+ * from IDomainConstraint). As the respective discretizations on both sides of the
+ * interface which are to be coupled are extended to the respective new elements
+ * nothing has to be assembled. The one thing that has to be done is assigning
+ * meaningful values to the constrained vertices.
+ *
+ * The constraint takes the general form:   u* = f(u,u1,u2)
+ * where u* is the value of a function at a constrained vertex, u the respective
+ * value at its constrainer, u1 is the value on the constraining side, u2 that on
+ * the constrained one.
+ *
+ * The constraint function f is problem-specific and needs to be carefully chosen.
+ * In order to define such a function, you will have to derive your own interface
+ * class from this base class and implement the two virtual methods
+ *
+ * - constrainedDefect
+ * - constrainedDefectDerivs
+ *
+ * constrainedDefect must calculate the defect of the constraints, i.e.
+ *     -u* + f(u,u1,u2);
+ *
+ * constrainedDefectDerivs must calculate the partial derivations wrt
+ * u*, u, u1, u2 thereof. Cf. documentation of the virtual methods.
+ *
+ * Two default implementations are realized in the derived classes
+ * AdditiveInterface1DFV1 and MultiplicativeInterface1DFV1 with:
+ *
+ *     f(u,u1,u2) = u + (u2-u1);
+ *     f(u,u1,u2) = u * (u2/u1),
+ *
+ * respectively.
+ *
+ *
+ * \tparam	TDomain				type of Domain
+ * \tparam	TAlgebra			type of Algebra
+ */
+
+
+template <typename TDomain, typename TAlgebra>
+class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
+{
+	public:
+		/// own type
+		typedef IInterface1DFV1<TDomain, TAlgebra> this_type;
+
+		/// world dimension
+		static const int worldDim = TDomain::dim;
+
+		///	domain type
+		typedef TDomain domain_type;
+
+		///	algebra type
+		typedef TAlgebra algebra_type;
+
+		///	type of algebra matrix
+		typedef typename algebra_type::matrix_type matrix_type;
+
+		///	type of algebra vector
+		typedef typename algebra_type::vector_type vector_type;
+
+		// element type
+		typedef typename domain_traits<worldDim>::element_type elem_type;
+
+		///	constructor
+		/**
+		 * @param fcts				the functions to which the interface applies
+		 * 							(must be defined on both sides of the interface!)
+		 * @param high_dim_subset	the name of the subset on the high-dimensional side
+		 * @param one_dim_subset	the name of the subset on the one-dimensional side
+		 */
+		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+
+		/// destructor
+		virtual ~IInterface1DFV1();
+
+
+	// inherited methods (from IConstraint)
+
+		///	returns the type of constraints
+		virtual int type() const;
+
+		///	sets the approximation space
+		/**
+		 * Is called by the domain discretization the constraint is added to
+		 * before constraint application.
+		 *
+		 * @param approxSpace	the approximation space to be set
+		 */
+		virtual void set_approximation_space(SmartPtr<ApproximationSpace<TDomain> > approxSpace);
+
+		///	adapts jacobian to enforce constraints
+		virtual void adjust_jacobian
+		(	matrix_type& J,
+			const vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0,
+			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
+			const number s_a0 = 1.0
+		);
+
+		///	adapts defect to enforce constraints
+		virtual void adjust_defect
+		(	vector_type& d,
+			const vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0,
+			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
+			const std::vector<number>* vScaleMass = NULL,
+			const std::vector<number>* vScaleStiff = NULL
+		);
+
+		///	adapts matrix and rhs (linear case) to enforce constraints
+		virtual void adjust_linear
+		(	matrix_type& mat,
+			vector_type& rhs,
+			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0
+		);
+
+		///	adapts a rhs to enforce constraints
+		virtual void adjust_rhs
+		(	vector_type& rhs,
+			const vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0
+		);
+
+		///	sets the constraints in a solution vector
+		virtual void adjust_solution
+		(	vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0
+		);
+
+	protected:
+		/// called when the approximation space has changed
+		void approximation_space_changed();
+
+	public:
+		// methods to be implemented by a concretization of this interface
+
+		/// function returning the defect value for a constrained node
+		/**
+		 * The defect is: -constrainedDoF + f(constrainingDoF, interfaceDoF0, interfaceDoF1),
+		 * where f is any inter-/extrapolating function that is suited to calculate the value
+		 * for the constrainedDoF from the values of the constraining DoF and the two interface
+		 * DoFs. Of course, f should be differentiable.
+		 * interfaceDoF0 is on the same side as the constrainingDoF,
+		 * interfaceDoF1 is on the side of the constrainedDoF.
+		 *
+		 * @param d			defect value at constrained vertex; this is the output
+		 * @param u			solution at constrained vertex
+		 * @param u_c		solution at corresponding constrainer vertex
+		 * @param u_itf0	solution at interface vertex on constraining side
+		 * @param u_itf1	solution at interface vertex on constrained side
+		 */
+		virtual void constrainedDefect
+		(	typename vector_type::value_type& d,
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		) = 0;
+
+		/// function returning the defect derivatives for a constrained node
+		/**
+		 * The defect is: -constrainedDoF + f(constrainingDoF, interfaceDoF0, interfaceDoF1),
+		 * where f is any inter-/extrapolating function that is suited to calculate the value
+		 * for the constrainedDoF from the values of the constraining DoF and the two interface
+		 * DoFs. Of course, f should be differentiable.
+		 * interfaceDoF0 is on the same side as the constrainingDoF,
+		 * interfaceDoF1 is on the side of the constrainedDoF.
+		 *
+		 * @param dd		defect derivs at constrained vertex (in the same order as input variables);
+		 * 					this is the output
+		 * @param u			solution at constrained vertex (must always be -1)
+		 * @param u_c		solution at corresponding constrainer vertex
+		 * @param u_itf0	solution at interface vertex on constraining side
+		 * @param u_itf1	solution at interface vertex on constrained side
+		 */
+		virtual void constrainedDefectDerivs
+		(	typename vector_type::value_type dd[4],
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		) = 0;
+
+	private:
+		/// for every constrained vertex: finds the corresponding constrainer
+		void fill_constrainer_map();
+
+		/// for every constrained vertex: collects the vertices in the constraining set
+		/// whose defect will be influenced by the constrained one
+		void fill_defect_influence_map();
+
+	public:
+		/// must be called when the underlying geometry is changed (if this affects the interface)
+		void geometryChanged();
+
+	protected:
+		/// constrained functions
+		std::vector<size_t> m_vFct;
+		std::vector<std::string> m_vsFct;
+
+		/// subset indices of constrained vertices
+		// m_ssi[0] MUST contain the ssi of the constrained vertices for the high-dim. end;
+		// m_ssi[1] the ssi of the constrained vertex for the 1d end
+		int m_ssi[2];
+		std::string m_sssi[2];
+
+		/// algebraic indices for the interface nodes (and all functions)
+		std::vector<size_t> m_algInd[2];
+
+		/// mapping each constrained vertex to its constrainer
+		std::map<Vertex*, Vertex*> m_constrainerMap;
+
+		/// mapping each constrained vertex to the collection of vertices whose defect it will affect
+		std::map<Vertex*, std::vector<Vertex*> > m_defectInfluenceMap;
+};
+
+
+template <typename TDomain, typename TAlgebra>
+class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
+{
+	public:
+		///	type of algebra vector
+		typedef typename TAlgebra::vector_type vector_type;
+
+	public:
+		///	constructor
+		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+
+		// inherited from IInterface1DFV1
+
+		/// \copydoc IInterface1DFV1::constrainedDefect()
+		virtual void constrainedDefect
+		(	typename vector_type::value_type& d,
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		);
+
+		/// \copydoc IInterface1DFV1::constrainedDefectDerivs()
+		virtual void constrainedDefectDerivs
+		(	typename vector_type::value_type dd[4],
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		);
+};
+
+
+template <typename TDomain, typename TAlgebra>
+class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
+{
+	public:
+		///	type of algebra vector
+		typedef typename TAlgebra::vector_type vector_type;
+
+	public:
+		///	constructor
+		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+
+		// inherited from IInterface1DFV1
+
+		/// \copydoc IInterface1DFV1::constrainedDefect()
+		virtual void constrainedDefect
+		(	typename vector_type::value_type& d,
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		);
+
+		/// \copydoc IInterface1DFV1::constrainedDefectDerivs()
+		virtual void constrainedDefectDerivs
+		(	typename vector_type::value_type dd[4],
+			const typename vector_type::value_type& u,
+			const typename vector_type::value_type& u_c,
+			const typename vector_type::value_type& u_itf0,
+			const typename vector_type::value_type& u_itf1
+		);
+};
+
+} // namespace ug
+
+
+#include "interface1d_fv1_impl.h"
+
+#endif /* INTERFACE1D_FV1_H_ */
