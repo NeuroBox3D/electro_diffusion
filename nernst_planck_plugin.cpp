@@ -8,13 +8,22 @@
 #include "bridge/util.h"
 #include "bridge/util_domain_algebra_dependent.h"
 
+#include "PNP_1D.h"
 #include "interface1d_fv1.h"
+#include "electric_circuit.h"
 
 using namespace std;
 using namespace ug::bridge;
 
 namespace ug{
 namespace nernst_planck{
+
+/**
+ *  \defgroup plugin_nernst_planck Plugin nernst_planck
+ *  \ingroup plugins_experimental
+ *  This is a plugin for Poisson-Nernst-Planck functionality.
+ *  \{
+ */
 
 /**
  * Class exporting the functionality. All functionality that is to
@@ -29,8 +38,8 @@ struct Functionality
  * are to be placed here when registering. The method is called for all
  * available Domain and Algebra types, based on the current build options.
  *
- * @param reg				registry
- * @param parentGroup		group for sorting of functionality
+ * @param reg		registry
+ * @param grp		group for sorting of functionality
  */
 template <typename TDomain, typename TAlgebra>
 static void DomainAlgebra(Registry& reg, string grp)
@@ -78,8 +87,8 @@ static void DomainAlgebra(Registry& reg, string grp)
  * are to be placed here when registering. The method is called for all
  * available Domain types, based on the current build options.
  *
- * @param reg				registry
- * @param parentGroup		group for sorting of functionality
+ * @param reg		registry
+ * @param grp		group for sorting of functionality
  */
 template <typename TDomain>
 static void Domain(Registry& reg, string grp)
@@ -97,6 +106,27 @@ static void Domain(Registry& reg, string grp)
 	* // parameter information for VRL
 	* "name1 | style1 | options1 # name2 | style2 | options2 # ... "
 	*/
+
+	// 1D PNP
+	{
+		typedef PNP_1D<TDomain> T;
+		typedef IElemDisc<TDomain> TBase;
+		string name = string("PNP_1D").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, const char*, const char*)>("function(s)#subset(s)")
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, std::vector<std::string>, std::vector<std::string>)>
+				("function(s)#subset(s)")
+			.add_method("set_ions", &T::set_ions, "", "vector of ion species names", "", "")
+			.add_method("set_valencies", &T::set_valencies, "", "vector of valencies", "", "")
+			.add_method("set_reversal_potential", &T::set_reversal_potentials, "", "vector of reversal potentials", "", "")
+			.add_method("set_specific_conductances", &T::set_specific_conductances, "", "vector of specific conductances", "", "")
+			.add_method("set_specific_capacities", &T::set_specific_capacities, "", "vector of specific capacities", "", "")
+			.add_method("set_diffusion_constants", &T::set_diffusion_constants, "", "vector of ion diffusion constants", "", "")
+			.add_method("set_permettivity", &T::set_permettivity, "", "permettivity value (eps_r*eps_0)", "", "")
+			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "PNP_1D", tag);
+	}
 }
 
 /**
@@ -105,8 +135,8 @@ static void Domain(Registry& reg, string grp)
  * are to be placed here when registering. The method is called for all
  * available Dimension types, based on the current build options.
  *
- * @param reg				registry
- * @param parentGroup		group for sorting of functionality
+ * @param reg		registry
+ * @param grp		group for sorting of functionality
  */
 template <int dim>
 static void Dimension(Registry& reg, string grp)
@@ -122,8 +152,8 @@ static void Dimension(Registry& reg, string grp)
  * are to be placed here when registering. The method is called for all
  * available Algebra types, based on the current build options.
  *
- * @param reg				registry
- * @param parentGroup		group for sorting of functionality
+ * @param reg		registry
+ * @param grp		group for sorting of functionality
  */
 template <typename TAlgebra>
 static void Algebra(Registry& reg, string grp)
@@ -138,15 +168,36 @@ static void Algebra(Registry& reg, string grp)
  * All Functions and Classes not depending on Domain and Algebra
  * are to be placed here when registering.
  *
- * @param reg				registry
- * @param parentGroup		group for sorting of functionality
+ * @param reg		registry
+ * @param grp		group for sorting of functionality
  */
 static void Common(Registry& reg, string grp)
 {
-
+	typedef ElectricCircuit T;
+	reg.add_class_<T>("ElectricCircuit", grp)
+		.add_constructor()
+		.add_method("add_capacitor", &T::add_capacitor)
+		.add_method("add_resistor", &T::add_resistor)
+		.add_method("add_voltage_source", &T::add_voltage_source)
+		.add_method("add_current_source", &T::add_current_source)
+		.add_method("add_initial_solution", &T::add_initial_solution)
+		.add_method("init", &T::init)
+		.add_method("update_rhs", &T::update_rhs)
+		.add_method("write_to_file", &T::write_to_file)
+		.add_method("close_file", &T::close_file)
+		.add_method("solve_stationary", &T::solve_stationary)
+		.add_method("solve_euler", &T::solve_euler)
+		.add_method("solve_trapezoid", &T::solve_trapezoid)
+		.add_method("get_solution", &T::get_solution)
+		.add_method("get_rhs", &T::get_rhs)
+		.set_construct_as_smart_pointer(true);
 }
 
 }; // end Functionality
+
+// end group plugin_nernst_planck
+/// \}
+
 } // end namespace calciumDynamics
 
 

@@ -7,10 +7,9 @@
 
 #include "interface1d_fv1.h"
 
-namespace ug
-{
+namespace ug{
+namespace nernst_planck{
 
-/// constructor with strings
 template <typename TDomain, typename TAlgebra>
 IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 (	const char* fcts,
@@ -713,7 +712,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
 
 
 //////////////////////////////////
-///   AdditiveInterface1DFV1   ///
+//   AdditiveInterface1DFV1   	//
 //////////////////////////////////
 
 /// constructor with strings
@@ -757,9 +756,9 @@ void AdditiveInterface1DFV1<TDomain, TAlgebra>::constrainedDefectDerivs
 
 
 
-////////////////////////////////////////
-///   MultiplicativeInterface1DFV1   ///
-////////////////////////////////////////
+//////////////////////////////////////
+//   MultiplicativeInterface1DFV1   //
+//////////////////////////////////////
 
 /// constructor with strings
 template <typename TDomain, typename TAlgebra>
@@ -805,4 +804,5 @@ void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefectDerivs
 	dd[3] =  u_c / u_itf0;
 }
 
-}; //namespace ug
+} // namespace nernst_planck
+} // namespace ug

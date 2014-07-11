@@ -14,7 +14,10 @@ include("../../../cmake/ug_plugin_includes.cmake")
 
 
 # sources
-set(SOURCES nernst_planck_plugin.cpp)
+set(SOURCES nernst_planck_plugin.cpp
+            PNP_1D.cpp
+            electric_circuit.cpp
+   )
 
 message(STATUS "-------------------information regarding calciumDynamics-------------------")
 

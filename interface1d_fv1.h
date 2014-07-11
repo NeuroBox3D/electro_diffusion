@@ -19,6 +19,7 @@
 
 
 namespace ug{
+namespace nernst_planck{
 
 /// Interface class for coupling high-dimensional (2D/3D) discretizations with 1D simplifications.
 /**
@@ -36,22 +37,22 @@ namespace ug{
  * ------------------------
  * Suppose you have the following situation: left: 2D, right: 1D
  *
- *	--- o --- o
- *	    |  /  |
- *	--- o --- O       O --- o ---
- *	    |  /  |
- *	--- o --- o
+ *     --- o --- o
+ *         |  /  |
+ *     --- o --- O       O --- o ---
+ *         |  /  |
+ *     --- o --- o
  *
  * The two nodes marked by a capital O will be referred to as "interface" nodes/vertices.
  *
  * Then you have to introduce constrained nodes (x) on both sides that will simulate
  * the behaviour of a non-existing extension of the respective subdomain:
  *
- *	--- o --- o  ---  x
- *	    |  /  |       |
- *	--- o  -  O/x === x/O --- o ---
- *	    |  /  |       |
- *	--- o --- o  ---  x
+ *     --- o --- o  ---  x
+ *         |  /  |       |
+ *     --- o  -  O/x === x/O --- o ---
+ *         |  /  |       |
+ *     --- o --- o  ---  x
  *
  * There are two vertices located at the same coordinates in the location of the
  * interface nodes. One is the interface vertex, the other is a constrained vertex
@@ -95,22 +96,30 @@ namespace ug{
  * - constrainedDefectDerivs
  *
  * constrainedDefect must calculate the defect of the constraints, i.e.
- *     -u* + f(u,u1,u2);
- *
+ * \f[
+ *      -u^\ast + f(u,u_1,u_2);
+ * \f]
  * constrainedDefectDerivs must calculate the partial derivations wrt
- * u*, u, u1, u2 thereof. Cf. documentation of the virtual methods.
+ * \f$ u^\ast \f$, \f$ u \f$, \f$ u_1 \f$, \f$ u_2 \f$ thereof.
+ * Cf. documentation of the virtual methods.
  *
  * Two default implementations are realized in the derived classes
  * AdditiveInterface1DFV1 and MultiplicativeInterface1DFV1 with:
  *
- *     f(u,u1,u2) = u + (u2-u1);
- *     f(u,u1,u2) = u * (u2/u1),
- *
+ * \f[
+ *		f(u,u_1,u_2) = u + (u_2-u_1);
+ * \f]
+ * \f[
+ * 		f(u,u_1,u_2) = u \cdot (u_2/u_1),
+ * \f]
  * respectively.
  *
  *
  * \tparam	TDomain				type of Domain
  * \tparam	TAlgebra			type of Algebra
+ *
+ * \date 08.07.2014
+ * \author mbreit
  */
 
 
@@ -363,6 +372,7 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 		);
 };
 
+} // namespace nernst_planck
 } // namespace ug
 
 
