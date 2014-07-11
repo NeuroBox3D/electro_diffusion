@@ -102,13 +102,13 @@ void ElectricCircuit::calculate_condition(Matrix A)
 	while (delta > 1e-8 && steps < 1000)
 	{
 		MatMult(x_new, 1.0, A, x);
-		x_new = x_new * (1.0 / x_new.norm2());
-		delta = (x_new-x).norm2();
+		x_new = x_new * (1.0 / VecTwoNorm(x_new));
+		delta = VecTwoNorm(x_new-x);
 		x = x_new;
 		steps++;
 	}
 	MatMult(x_new, 1.0, A, x);
-	number lambda_max = x_new.norm2()/x.norm2();
+	number lambda_max = VecTwoNorm(x_new)  / VecTwoNorm(x);
 
 	// find smallest EV
 	if (!Invert(A))
@@ -123,12 +123,12 @@ void ElectricCircuit::calculate_condition(Matrix A)
 	while (delta > 1e-8 && steps < 1000)
 	{
 		MatMult(x_new, 1.0, A, x);
-		x_new = x_new * (1.0 / x_new.norm2());
-		delta = (x_new-x).norm2();
+		x_new = x_new * (1.0 / VecTwoNorm(x_new));
+		delta = VecTwoNorm(x_new-x);
 		x = x_new;
 	}
 	MatMult(x_new, 1.0, A, x);
-	number lambda_min = x.norm2()/x_new.norm2();
+	number lambda_min = VecTwoNorm(x) / VecTwoNorm(x_new);
 
 	std::cout << std::endl << "matrix condition is: " << lambda_max / lambda_min << "." << std::endl;
 }
