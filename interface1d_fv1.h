@@ -69,6 +69,7 @@ namespace nernst_planck{
  * This holds for the 1D side analogously.
  *
  * Subsets:
+ * ---------
  * The constrained manifold (at least the vertices) of the high-dimensional side
  * must be (exclusively) assigned to a subset that needs to be specified in the
  * interface constructor. The same is necessary for the (single) 1D constrained

@@ -473,10 +473,17 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 						conn.value() = 0.0;
 				}
 
-				J(constrdInd[0], constrdInd[0]) = defDeriv[0];
-				J(constrdInd[0], constrgInd[0]) = defDeriv[1];
-				J(constrdInd[0], m_algInd[side][fct]) = defDeriv[2];
-				J(constrdInd[0], m_algInd[c_side][fct]) = defDeriv[3];
+				// avoid special cases (where e.g. constrdInd[0] == m_algInd[c_side][fct]))
+				// by adding up derivs instead of assigning directly
+				J(constrdInd[0], constrdInd[0])
+					= J(constrdInd[0], constrgInd[0])
+					= J(constrdInd[0], m_algInd[side][fct])
+					= J(constrdInd[0], m_algInd[c_side][fct]) = 0.0;
+
+				J(constrdInd[0], constrdInd[0]) += defDeriv[0];
+				J(constrdInd[0], constrgInd[0]) += defDeriv[1];
+				J(constrdInd[0], m_algInd[side][fct]) += defDeriv[2];
+				J(constrdInd[0], m_algInd[c_side][fct]) += defDeriv[3];
 
 				// adapt rows for all constraining defects that depend on this constrained
 				std::vector<Vertex*>& allConstrainers = m_defectInfluenceMap[constrd];
