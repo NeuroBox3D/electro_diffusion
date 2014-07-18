@@ -10,6 +10,7 @@
 
 
 #include <map>
+#include <limits>	// for numeric_limits<>::max()
 
 #include "common/common.h"
 #include "common/math/ugmath.h"
@@ -224,6 +225,14 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/// called when the approximation space has changed
 		void approximation_space_changed();
 
+		/// sourced-out function for (esp.) parallel procuration of solution values at interface nodes
+		void fill_sol_at_intf
+		(
+			std::vector<number> intf_val[2],
+			const vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd
+		);
+
 	public:
 		// methods to be implemented by a concretization of this interface
 
@@ -282,10 +291,6 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/// whose defect will be influenced by the constrained one
 		void fill_defect_influence_map();
 
-	public:
-		/// must be called when the underlying geometry is changed (if this affects the interface)
-		void geometryChanged();
-
 	protected:
 		/// constrained functions
 		std::vector<size_t> m_vFct;
@@ -319,6 +324,9 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 		///	constructor
 		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
 
+		/// destructor
+		virtual ~AdditiveInterface1DFV1() {};
+
 		// inherited from IInterface1DFV1
 
 		/// \copydoc IInterface1DFV1::constrainedDefect()
@@ -351,6 +359,9 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 	public:
 		///	constructor
 		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+
+		/// destructor
+		virtual ~MultiplicativeInterface1DFV1() {};
 
 		// inherited from IInterface1DFV1
 

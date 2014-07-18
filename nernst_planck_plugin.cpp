@@ -8,6 +8,7 @@
 #include "bridge/util.h"
 #include "bridge/util_domain_algebra_dependent.h"
 
+#include "nernst_planck_util.h"
 #include "PNP_1D.h"
 #include "interface1d_fv1.h"
 #include "electric_circuit.h"
@@ -46,6 +47,12 @@ static void DomainAlgebra(Registry& reg, string grp)
 {
 	string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
 	string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
+
+	// write residuals to file function for param optimization
+	reg.add_function("write_residuals_to_file", &writeResidualsToFile<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+						 "", "solution#reference solution#outFileName",
+						 "writes residuals in every dof to file as required by Ivo's optimization routines "
+						 "and returns squared 2-norm of residual vector");
 
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
