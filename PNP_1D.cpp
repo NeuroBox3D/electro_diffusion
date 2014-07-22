@@ -23,7 +23,7 @@ PNP_1D<TDomain>::PNP_1D
 	const char* subsets
 )
 : IElemDisc<TDomain>(functions, subsets),
-  R(8.314), T(310.0), F(96485.0),
+  R(8.31451), T(298.15), F(96485.0),
   m_spApproxSpace(approx),
   m_bNonRegularGrid(false),
   m_aRadius("radius"),
@@ -157,14 +157,25 @@ void PNP_1D<TDomain>::set_diffusion_constants(const std::vector<number>& vDiff)
 
 // set effective electric permettivity in the dendrite (eps_0 * eps_r)
 template <typename TDomain>
-void PNP_1D<TDomain>::set_permettivity(const number permet)
+void PNP_1D<TDomain>::set_permettivities(const number eps_dend, const number eps_mem)
 {
 	// make sure, all entries are 0.0
-	m_permittivity *= 0.0;
+	m_permittivity_dend *= 0.0;
 
 	// create isotrope diagonal matrix
 	for (size_t j = 0; j < worldDim; j++)
-		m_permittivity(j,j) = permet;
+	{
+		m_permittivity_dend(j,j) = eps_dend;
+	}
+
+	m_permittivity_mem = eps_mem;
+}
+
+// set constant dendritic radius
+template <typename TDomain>
+void PNP_1D<TDomain>::set_membrane_thickness(const number d)
+{
+	m_mem_thickness = d;
 }
 
 // set constant dendritic radius
@@ -335,7 +346,7 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 			VecScaleAppend(grad_phi, u(_PHI_,sh), scvf.global_grad(sh));
 
 		// scale by permittivity tensor
-		MatVecMult(eps_grad_phi, m_permittivity, grad_phi);
+		MatVecMult(eps_grad_phi, m_permittivity_dend, grad_phi);
 
 		// compute flux density
 		number flux = VecDot(eps_grad_phi, scvf.normal());
@@ -419,13 +430,17 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		// volume of dendritic scv
 		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
 
-	// potential in potential equation
-	// TODO: Think about whether there is an electric flux over the
-	// cylinder's surface area.
-	// Hm, probably not, since the potential here represents the bulk value
-	// in the center of the dendrite, where for symmetry reasons, there is
-	// no radial electric field component.
-	// charge density term
+	// potential equation
+
+		// E field over cylinder surface area (supposedly constant)
+		number el_surf_flux = m_permittivity_mem * u(_PHI_,co) / m_mem_thickness;
+
+		// scale by surface area and Faraday constant
+		el_surf_flux *= scvArea / F;
+
+		d(_PHI_, co) -= el_surf_flux;
+
+		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 		{
 			d(_PHI_, co) += u(i, co) * m_vValency[i] * scvVolume;
@@ -546,7 +561,7 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 		for (size_t sh = 0; sh < scvf.num_sh(); sh++)
 		{
 			// scale by permittivity tensor
-			MatVecMult(eps_grad, m_permittivity, scvf.global_grad(sh));
+			MatVecMult(eps_grad, m_permittivity_dend, scvf.global_grad(sh));
 
 			// compute flux density
 			number flux = VecDot(eps_grad, scvf.normal());
@@ -642,7 +657,10 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
 
 	// potential equation
-	// TODO: electric flux over cylinder surface?
+		// E field over cylinder surface area
+		J(_PHI_, co, _PHI_, co) -= m_permittivity_mem / m_mem_thickness * scvArea / F;
+
+		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 			J(_PHI_, co, i, co) += m_vValency[i] * scvVolume;
 

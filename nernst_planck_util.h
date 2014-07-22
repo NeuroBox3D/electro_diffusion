@@ -22,7 +22,13 @@ namespace nernst_planck{
 
 
 template <typename TGridFunction>
-number writeResidualsToFile(SmartPtr<TGridFunction> sol1, SmartPtr<TGridFunction> sol2, const char* fileName);
+number writeResidualsToFile
+(
+	SmartPtr<TGridFunction> sol1,
+	SmartPtr<TGridFunction> sol2,
+	const char* cmp,
+	const char* fileName
+);
 
 
 

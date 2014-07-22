@@ -129,7 +129,8 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_specific_conductances", &T::set_specific_conductances, "", "vector of specific conductances", "", "")
 			.add_method("set_specific_capacities", &T::set_specific_capacities, "", "vector of specific capacities", "", "")
 			.add_method("set_diffusion_constants", &T::set_diffusion_constants, "", "vector of ion diffusion constants", "", "")
-			.add_method("set_permettivity", &T::set_permettivity, "", "permettivity value (eps_r*eps_0)", "", "")
+			.add_method("set_permettivities", &T::set_permettivities, "", "permettivity value dendrite (eps_dend*eps_0)#permettivity value membrane (eps_mem*eps_0)", "", "")
+			.add_method("set_membrane_thickness", &T::set_membrane_thickness, "", "membrane thickness", "", "")
 			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP_1D", tag);

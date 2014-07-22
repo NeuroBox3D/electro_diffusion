@@ -224,7 +224,10 @@ class PNP_1D: public IElemDisc<TDomain>
 		void set_diffusion_constants(const std::vector<number>& vDiff);
 
 		/// set effective electric permettivity in the dendrite (eps_0 * eps_r)
-		void set_permettivity(const number permet);
+		void set_permettivities(const number eps_dend, const number eps_mem);
+
+		/// set constant dendritic radius
+		void set_membrane_thickness(const number d);
 
 		/// set constant dendritic radius
 		void set_dendritic_radius(const number r);
@@ -263,8 +266,11 @@ class PNP_1D: public IElemDisc<TDomain>
 		std::vector<MathMatrix<worldDim,worldDim> > m_vDiffusionTensor;
 
 		/// electric permittivity (eps_r * eps_0)
-		MathMatrix<worldDim,worldDim> m_permittivity;
+		MathMatrix<worldDim,worldDim> m_permittivity_dend;
+		number m_permittivity_mem;
 
+		/// membrane thickness
+		number m_mem_thickness;
 
 	private:
 		void register_all_funcs();
