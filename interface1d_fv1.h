@@ -154,10 +154,11 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/**
 		 * @param fcts				the functions to which the interface applies
 		 * 							(must be defined on both sides of the interface!)
-		 * @param high_dim_subset	the name of the subset on the high-dimensional side
-		 * @param one_dim_subset	the name of the subset on the one-dimensional side
+		 * @param high_dim_subset	the name of the constrained subset on the high-dimensional side
+		 * @param one_dim_subset	the name of the constrained subset on the one-dimensional side
+		 * @param extension_subset	the name of the extension domain subset (1D side)
 		 */
-		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset, const char* extension_subset);
 
 		/// destructor
 		virtual ~IInterface1DFV1();
@@ -176,6 +177,8 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		 * @param approxSpace	the approximation space to be set
 		 */
 		virtual void set_approximation_space(SmartPtr<ApproximationSpace<TDomain> > approxSpace);
+
+		//void check_values_at_interface(const vector_type& sol);
 
 		///	adapts jacobian to enforce constraints
 		virtual void adjust_jacobian
@@ -296,6 +299,10 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		std::vector<size_t> m_vFct;
 		std::vector<std::string> m_vsFct;
 
+		/// subset index of extension domain
+		int m_ssiExt;
+		std::string m_sssiExt;
+
 		/// subset indices of constrained vertices
 		// m_ssi[0] MUST contain the ssi of the constrained vertices for the high-dim. end;
 		// m_ssi[1] the ssi of the constrained vertex for the 1d end
@@ -322,7 +329,8 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset,
+							   const char* one_dim_subset, const char* extension_subset);
 
 		/// destructor
 		virtual ~AdditiveInterface1DFV1() {};
@@ -358,7 +366,8 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset);
+		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset,
+				   const char* one_dim_subset, const char* extension_subset);
 
 		/// destructor
 		virtual ~MultiplicativeInterface1DFV1() {};

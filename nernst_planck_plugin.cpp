@@ -60,28 +60,29 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
 		string name = string("IInterface1DFV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp);
+			//.add_method("check_values_at_interface", &T::check_values_at_interface, "", "solution grid function", "", "");
 		reg.add_class_to_group(name, "IInterface1DFV1", tag);
 	}
 
-	// additive nD71D interface
+	// additive nD/1D interface
 	{
 		typedef AdditiveInterface1DFV1<TDomain, TAlgebra> T;
 		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
 		string name = string("AdditiveInterface1DFV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*)>
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
 					  ("function(s)#high-dim constrained subset#one-dim constrained subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "AdditiveInterface1DFV1", tag);
 	}
 
-	// additive nD71D interface
+	// multiplicative nD/1D interface
 	{
 		typedef MultiplicativeInterface1DFV1<TDomain, TAlgebra> T;
 		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
 		string name = string("MultiplicativeInterface1DFV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*)>
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
 					  ("function(s)#high-dim constrained subset#one-dim constrained subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);

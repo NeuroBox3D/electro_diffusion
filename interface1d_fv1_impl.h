@@ -14,7 +14,8 @@ template <typename TDomain, typename TAlgebra>
 IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 (	const char* fcts,
 	const char* high_dim_subset,
-	const char* one_dim_subset
+	const char* one_dim_subset,
+	const char* extension_subset
 )
 {
 // store function names
@@ -40,6 +41,7 @@ IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 	}
 
 // store subset names
+	m_sssiExt = std::string(extension_subset);
 	m_sssi[0] = std::string(high_dim_subset);
 	m_sssi[1] = std::string(one_dim_subset);
 }
@@ -79,6 +81,21 @@ set_approximation_space(SmartPtr<ApproximationSpace<TDomain> > approxSpace)
 	if (newApproxSpace) approximation_space_changed();
 }
 
+/*
+template <typename TDomain, typename TAlgebra>
+void IInterface1DFV1<TDomain, TAlgebra>::
+check_values_at_interface(const vector_type& sol)
+{
+	size_t numFct = m_vFct.size();
+	for (size_t fct = 0; fct < numFct; fct++)
+		std::cout << "u_2d["<<fct<<"] = "<< sol[m_algInd[0][fct]] << "  ";
+	std::cout << std::endl;
+	for (size_t fct = 0; fct < numFct; fct++)
+		std::cout << "u_1d["<<fct<<"] = "<< sol[m_algInd[1][fct]] << "  ";
+	std::cout << std::endl << std::endl;
+}
+*/
+
 
 /// called when the approximation space has changed
 template <typename TDomain, typename TAlgebra>
@@ -110,10 +127,11 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 	}
 
 // get subset indices
+	m_ssiExt = dom->subset_handler()->get_subset_index(m_sssiExt.c_str());
 	m_ssi[0] = dom->subset_handler()->get_subset_index(m_sssi[0].c_str());
 	m_ssi[1] = dom->subset_handler()->get_subset_index(m_sssi[1].c_str());
 
-	if (m_ssi[0] < 0 || m_ssi[1] < 0)	// previous call gives -1 if failed
+	if (m_ssiExt < 0 || m_ssi[0] < 0 || m_ssi[1] < 0)	// previous call gives -1 if failed
 	{
 		UG_THROW("At least one of the given subsets is not contained in the "
 				  "geometry handled by this domain's subset handler");
@@ -144,6 +162,9 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 	{
 #ifndef UG_PARALLEL
 		UG_THROW("No vertex in constrained subset for 1d side. This is not allowed!");
+#else
+		if (pcl::NumProcs() <= 1)
+			UG_THROW("No vertex in constrained subset for 1d side. This is not allowed!");
 #endif
 		// else do nothing
 	}
@@ -155,14 +176,20 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 		edge_list el;
 		dom->grid()->associated_elements(el, constrd);
 
-		if (el.size() != 1)
+		// find edge in the 1d extension domain subset and take other end
+		for (size_t i = 0; i < el.size(); i++)
 		{
-			UG_THROW("Incorrect number of connected edges for constrained vertex on 1d end."
-					 "There should be exactly 1, but " << el.size() << " found.\n"
-					 "Correct the error in your geometry!");
+			if (dom->subset_handler()->get_subset_index(el[i]) == m_ssiExt)
+			{
+				el[i]->get_opposing_side(constrd, &iv1);
+				break;
+			}
 		}
-
-		el[0]->get_opposing_side(constrd, &iv1);
+		if (!iv1)
+		{
+			UG_THROW("Constrained vertex on 1d end is not connected to any edge of the extension."
+					 "This case is not permitted.");
+		}
 
 		// to be on the safe side
 		if (++iter != dd->end<Vertex>(m_ssi[1]))
@@ -199,6 +226,12 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 #ifndef UG_PARALLEL
 			UG_THROW("No vertex in constrained subset for full-dim side that has the same coordinates "
 					 "as the 1d interface vertex. This is not allowed!");
+#else
+			if (pcl::NumProcs() == 1)
+			{
+				UG_THROW("No vertex in constrained subset for full-dim side that has the same coordinates "
+						 "as the 1d interface vertex. This is not allowed!");
+			}
 #endif
 			// else do nothing
 		}
@@ -308,15 +341,21 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
 			edge_list el;
 			dom->grid()->associated_elements(el, constrd);
 
-			if (el.size() != 1)
+			// find edge in the 1d extension domain subset and take other end
+			Vertex* other = NULL;
+			for (size_t i = 0; i < el.size(); i++)
 			{
-				UG_THROW("Incorrect number of connected edges for constrained vertex on 1d end."
-					     "There should be exactly 1, but " << el.size() << " found.\n"
-					     "Correct the error in your geometry!");
+				if (dom->subset_handler()->get_subset_index(el[i]) == m_ssiExt)
+				{
+					el[i]->get_opposing_side(constrd, &other);
+					break;
+				}
 			}
-
-			Vertex* other;
-			el[0]->get_opposing_side(constrd, &other);
+			if (!other)
+			{
+				UG_THROW("Constrained vertex on 1d end is not connected to any edge of the extension."
+						 "This case is not permitted.");
+			}
 
 			if (dom->subset_handler()->get_subset_index(other) != m_ssi[1])
 				 m_constrainerMap[constrd] = other;
@@ -518,12 +557,16 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 #ifdef UG_PARALLEL
 	// check parallel storage type
 	if (pcl::NumProcs() > 1 &&
-		(!J.has_storage_type(PST_CONSISTENT) || !u.has_storage_type(PST_CONSISTENT)))
+		(!u.has_storage_type(PST_CONSISTENT)))
 	{
-		UG_THROW("Expected both matrix and solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but they do not. PST types are '" << J.get_storage_type() << "' (matrix) and '"
-				 << u.get_storage_type() << "' (solution).");
+		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
+				 "but it does not. PST is '" << u.get_storage_type() << "'.");
 	}
+
+	// J is supposed to have PST "additive" before application of constraints
+	// (however, this can not be checked for here since the status is not set but after
+	// the application of all constraints in domain_disc_impl.h).
+	// It will still have PST "additive" afterwards.
 #endif
 
 	std::vector<number> intf_val[2];
@@ -645,11 +688,10 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 #ifdef UG_PARALLEL
 	// check parallel storage type
 	if (pcl::NumProcs() > 1 &&
-		(!d.has_storage_type(PST_CONSISTENT) || !u.has_storage_type(PST_CONSISTENT)))
+		(!u.has_storage_type(PST_CONSISTENT)))
 	{
-		UG_THROW("Expected both defect and solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but they do not. PST types are '" << d.get_storage_type() << "' (defect) and '"
-				 << u.get_storage_type() << "' (solution).");
+		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
+				 "but it does not. PST is '" << u.get_storage_type() << "'.");
 	}
 #endif
 
@@ -797,7 +839,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
 		(!u.has_storage_type(PST_CONSISTENT)))
 	{
 		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but it does not. PST type is '" << u.get_storage_type() << "'.");
+				 "but it does not. PST is '" << u.get_storage_type() << "'.");
 	}
 #endif
 
@@ -865,8 +907,9 @@ template <typename TDomain, typename TAlgebra>
 AdditiveInterface1DFV1<TDomain, TAlgebra>::AdditiveInterface1DFV1
 (	const char* fcts,
 	const char* high_dim_subset,
-	const char* one_dim_subset
-) : IInterface1DFV1<TDomain, TAlgebra>(fcts, high_dim_subset, one_dim_subset) {}
+	const char* one_dim_subset,
+	const char* extension_subset
+) : IInterface1DFV1<TDomain, TAlgebra>(fcts, high_dim_subset, one_dim_subset, extension_subset) {}
 
 
 /// function returning the defect value for a constrained node
@@ -910,8 +953,9 @@ template <typename TDomain, typename TAlgebra>
 MultiplicativeInterface1DFV1<TDomain, TAlgebra>::MultiplicativeInterface1DFV1
 (	const char* fcts,
 	const char* high_dim_subset,
-	const char* one_dim_subset
-) : IInterface1DFV1<TDomain, TAlgebra>(fcts, high_dim_subset, one_dim_subset) {}
+	const char* one_dim_subset,
+	const char* extension_subset
+) : IInterface1DFV1<TDomain, TAlgebra>(fcts, high_dim_subset, one_dim_subset, extension_subset) {}
 
 
 /// function returning the defect value for a constrained node
@@ -925,7 +969,7 @@ void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefect
 )
 {
 	if (std::fabs(u_itf0) < 2 * std::numeric_limits<typename vector_type::value_type>::denorm_min())
-		{UG_THROW("Denominator practically zero.");}
+		{UG_THROW("Denominator practically zero (" << u_itf0 << ").");}
 
 	d = -u + u_c * (u_itf1 / u_itf0);
 }
