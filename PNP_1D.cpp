@@ -250,7 +250,7 @@ void PNP_1D<TDomain>::prep_elem_loop(const ReferenceObjectID roid, const int si)
 	*/
 }
 
-//	virtual prepare one elements for assembling
+//	prepares one element for assembling
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void PNP_1D<TDomain>::prep_elem(const LocalVector& u, GridObject* elem, const MathVector<worldDim> vCornerCoords[])
@@ -304,7 +304,7 @@ void PNP_1D<TDomain>::prep_elem(const LocalVector& u, GridObject* elem, const Ma
 	*/
 }
 
-//	virtual postprocesses the loop over all elements of one type
+//	postprocesses the loop over all elements of one type
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void PNP_1D<TDomain>::fsh_elem_loop()
@@ -659,7 +659,6 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 	// potential equation
 		// E field over cylinder surface area
 		J(_PHI_, co, _PHI_, co) -= m_permittivity_mem / m_mem_thickness * scvArea / F;
-
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 			J(_PHI_, co, i, co) += m_vValency[i] * scvVolume;

@@ -281,9 +281,9 @@ class PNP_1D: public IElemDisc<TDomain>
 			this_type* m_pThis;
 			template<typename TElem > void operator()(TElem&)
 			{
-				if (m_pThis->m_bNonRegularGrid)
-					m_pThis->register_func<TElem, HFV1Geometry<TElem, worldDim> >();
-				else
+				//if (m_pThis->m_bNonRegularGrid)
+					//m_pThis->register_func<TElem, HFV1Geometry<TElem, worldDim> >();
+				//else
 					m_pThis->register_func<TElem, FV1Geometry<TElem, worldDim> >();
 			}
 		};
