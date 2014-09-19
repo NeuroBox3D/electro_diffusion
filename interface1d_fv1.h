@@ -158,7 +158,8 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		 * @param one_dim_subset	the name of the constrained subset on the one-dimensional side
 		 * @param extension_subset	the name of the extension domain subset (1D side)
 		 */
-		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset, const char* extension_subset);
+		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset,
+						const char* two_dim_intfNode, const char* extension_subset);
 
 		/// destructor
 		virtual ~IInterface1DFV1();
@@ -303,6 +304,10 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		int m_ssiExt;
 		std::string m_sssiExt;
 
+		/// subset index of 2d interface node
+		int m_ssiIN;
+		std::string m_sssiIN;
+
 		/// subset indices of constrained vertices
 		// m_ssi[0] MUST contain the ssi of the constrained vertices for the high-dim. end;
 		// m_ssi[1] the ssi of the constrained vertex for the 1d end
@@ -330,7 +335,8 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 	public:
 		///	constructor
 		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset,
-							   const char* one_dim_subset, const char* extension_subset);
+							   const char* one_dim_subset, const char* one_dim_intfNode,
+							   const char* extension_subset);
 
 		/// destructor
 		virtual ~AdditiveInterface1DFV1() {};
@@ -367,7 +373,8 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 	public:
 		///	constructor
 		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset,
-				   const char* one_dim_subset, const char* extension_subset);
+				   const char* two_dim_subset, const char* one_dim_intfNode,
+				   const char* extension_subset);
 
 		/// destructor
 		virtual ~MultiplicativeInterface1DFV1() {};
