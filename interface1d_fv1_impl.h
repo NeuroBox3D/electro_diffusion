@@ -171,12 +171,12 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 		}
 		// else do nothing
 else
-	UG_LOG("Proc " << pcl::ProcRank() << ": 1D end failure\n");
+	UG_LOG_ALL_PROCS("1D end failure\n");
 #endif
 	}
 	else
 	{
-UG_LOG("Proc " << pcl::ProcRank() << ": 1D end success\n");
+UG_LOG_ALL_PROCS(": 1D end success\n");
 		Vertex* constrd = *iter;
 
 		// 1b)
@@ -218,12 +218,12 @@ UG_LOG("Proc " << pcl::ProcRank() << ": 1D end success\n");
 		}
 		// else do nothing
 else
-	UG_LOG("Proc " << ug::GetLogAssistant().get_process_rank() << ": 2D end failure\n");
+	UG_LOG_ALL_PROCS(": 2D end failure\n");
 #endif
 	}
 	else
 	{
-UG_LOG("Proc " << pcl::ProcRank() << ": 2D end success\n");
+UG_LOG_ALL_PROCS(": 2D end success\n");
 		iv2 = *iter;
 
 		// to be on the safe side
