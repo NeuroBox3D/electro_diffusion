@@ -11,6 +11,7 @@
 #include "nernst_planck_util.h"
 #include "PNP_1D.h"
 #include "interface1d_fv1.h"
+#include "constrained_ilu.h"
 #include "electric_circuit.h"
 
 using namespace std;
@@ -88,6 +89,20 @@ static void DomainAlgebra(Registry& reg, string grp)
 					   "high-dim interface node subset#one-dim extension subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);
+	}
+
+	//	ILUC preconditioner
+	{
+		typedef ILUC<TDomain, TAlgebra> T;
+		typedef IPreconditioner<TAlgebra> TBase;
+		string name = string("ILUC").append(suffix);
+		reg.add_class_<T,TBase>(name, grp, "Incomplete LU Decomposition respecting constraints")
+		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
+			.add_method("set_beta", &T::set_beta, "", "beta")
+			.add_method("set_sort", &T::set_sort, "", "bSort", "if bSort=true, use a cuthill-mckey sorting to reduce fill-in. default false")
+			.add_method("add_constraint", &T::add_constraint, "", "constraint")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "ILUC", tag);
 	}
 }
 

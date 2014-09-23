@@ -14,6 +14,7 @@
 
 #include "common/common.h"
 #include "common/math/ugmath.h"
+#include "lib_algebra/operator/interface/matrix_operator.h"
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
@@ -116,6 +117,12 @@ namespace nernst_planck{
  * \f]
  * respectively.
  *
+ *
+ * \note At the moment, if you want to use parallel GMG with a gathered base solver
+ * with this implementation, you have to set gmg:set_rap(true); otherwise you will
+ * experience MPI failures, since the gathering process will try to communicate
+ * with all others in order to assemble the constraints given here, whereas the
+ * other processes will not reach this point of communication.
  *
  * \tparam	TDomain				type of Domain
  * \tparam	TAlgebra			type of Algebra
@@ -222,6 +229,14 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		virtual void adjust_solution
 		(	vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			number time = 0.0
+		);
+
+		/// additional linear adjustment for use inside linear solver
+		virtual void adjust_solution_linear
+		(	vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			SmartPtr<MatrixOperator<matrix_type, vector_type> > J,
 			number time = 0.0
 		);
 

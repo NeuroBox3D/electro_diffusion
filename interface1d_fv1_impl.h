@@ -170,13 +170,10 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 			UG_THROW("No vertex in constrained subset for 1d side. This is not allowed!");
 		}
 		// else do nothing
-else
-	UG_LOG_ALL_PROCS("1D end failure\n");
 #endif
 	}
 	else
 	{
-UG_LOG_ALL_PROCS(": 1D end success\n");
 		Vertex* constrd = *iter;
 
 		// 1b)
@@ -217,13 +214,10 @@ UG_LOG_ALL_PROCS(": 1D end success\n");
 			UG_THROW("Vertex for full-dimensional interface node could not be found via its subset index.");
 		}
 		// else do nothing
-else
-	UG_LOG_ALL_PROCS(": 2D end failure\n");
 #endif
 	}
 	else
 	{
-UG_LOG_ALL_PROCS(": 2D end success\n");
 		iv2 = *iter;
 
 		// to be on the safe side
@@ -499,6 +493,16 @@ if (pcl::NumProcs() > 1)
 
 	std::vector<number> comm_receive;
 
+	/* TODO: We have a problem here when using GMG:
+	 * This method is called by adjust_jacobian() and that one is called after
+	 * assembling the jacobian on the base level. If the base solver is gathered
+	 * (i.e. executed only on one process), only the executing process will arrive
+	 * here and the others will not take part in the communication.
+	 * In fact, they are waiting at a defect computation communication point for
+	 * the solver which contains the GMG and therefore, this will produce strange
+	 * MPI errors, like "MPI ERROR: MPI_ERR_TRUNCATE: message truncated".
+	 */
+
 	// communicate: compute the sum over all processes and send it back to all
 	com.allreduce(comm_vec, comm_receive, PCL_RO_SUM);
 
@@ -677,20 +681,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 )
 {
 	size_t numFct = m_vFct.size();
-/*
-#ifdef UG_PARALLEL
-	// check parallel storage type
-	if (pcl::NumProcs() > 1 &&
-		(!u.has_storage_type(PST_CONSISTENT)))
-	{
-		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but it does not. PST is '" << u.get_storage_type() << "'.");
-	}
-#endif
 
-	std::vector<number> intf_val[2];
-	fill_sol_at_intf(intf_val, u, dd);
-*/
 	// loop constrained vertices on the first side of the interface,
 	// then switch roles and do the same thing for the other side
 	for (size_t side = 0; side < 2; side++)
@@ -702,10 +693,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 
 		for (; iter != iterEnd; ++iter)
 		{
-			// get constrained and constraining vertices
-			//Vertex* constrd = *iter;
-			//Vertex* constrg = m_constrainerMap[constrd];
-
 			// loop functions
 			for (size_t fct = 0; fct < numFct; fct++)
 			{
@@ -717,26 +704,10 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
 				dd->inner_algebra_indices_for_fct(*iter, constrdInd, false, m_vFct[fct]);
 
-				/*
-				// constraining index
-				int si = dd->subset_handler()->get_subset_index(constrg);
-				if (!dd->is_def_in_subset(m_vFct[fct], si))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
-
-				// should not happen, but for debugging purposes:
-				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
-
-				// constrain defect
-				constrainedDefect(d[constrdInd[0]], u[constrdInd[0]], u[constrgInd[0]],
-								  intf_val[side][fct], intf_val[c_side][fct]);
-				*/
-
 				// better convergence results are yielded
 				// by adjusting the solution before computing the defect
 				// which automatically reduces the defect to 0
-				d[constrdInd[0]] = 0;
+				d[constrdInd[0]] = 0.0;
 			}
 		}
 	}
@@ -893,6 +864,82 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
 	}
 }
 
+/// additional linear adjustment for use inside linear solver
+template <typename TDomain, typename TAlgebra>
+void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution_linear
+(	vector_type& u,
+	ConstSmartPtr<DoFDistribution> dd,
+	SmartPtr<MatrixOperator<matrix_type, vector_type> > J,
+	number time
+)
+{
+	size_t numFct = m_vFct.size();
+
+#ifdef UG_PARALLEL
+	// check parallel storage type
+	if (pcl::NumProcs() > 1 &&
+		(!u.has_storage_type(PST_CONSISTENT)))
+	{
+		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
+				 "but it does not. PST is '" << u.get_storage_type() << "'.");
+	}
+#endif
+
+	std::vector<number> intf_val[2];
+	fill_sol_at_intf(intf_val, u, dd);
+
+	// loop constrained vertices on the first side of the interface,
+	// then switch roles and do the same thing for the other side
+	for (size_t side = 0; side < 2; side++)
+	{
+		// side is the constraining side; c_side the constrained one
+		size_t c_side = (side+1) % 2;
+
+		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
+		iter = dd->begin<Vertex>(m_ssi[side]);
+		iterEnd = dd->end<Vertex>(m_ssi[side]);
+
+		for (; iter != iterEnd; ++iter)
+		{
+			// get constrained and constraining vertices
+			Vertex* constrd = *iter;
+			Vertex* constrg = m_constrainerMap[constrd];
+
+			// loop functions
+			for (size_t fct = 0; fct < numFct; fct++)
+			{
+				std::vector<size_t> constrdInd;
+				std::vector<size_t> constrgInd;
+
+				// constrained index
+				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
+				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
+
+				// constraining index
+				int si = dd->subset_handler()->get_subset_index(constrg);
+				if (!dd->is_def_in_subset(m_vFct[fct], si))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
+				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
+
+				// should not happen, but for debugging purposes:
+				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
+				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
+
+				// constrain defect
+				// get defect derivatives for this vertex
+				matrix_type& M = J->get_matrix();
+
+				// write Jacobian row for constrained (first: delete all couplings)
+				u[constrdInd[0]] = M(constrdInd[0], constrgInd[0])*u[constrgInd[0]];
+				if (m_algInd[side].size())
+					u[constrdInd[0]] += M(constrdInd[0], m_algInd[side][fct])*intf_val[side][fct];
+				if (m_algInd[c_side].size())
+					u[constrdInd[0]] += M(constrdInd[0], m_algInd[c_side][fct])*intf_val[c_side][fct];
+			}
+		}
+	}
+}
 
 
 
