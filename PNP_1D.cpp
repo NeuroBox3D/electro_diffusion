@@ -351,8 +351,8 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		// compute flux density
 		number flux = VecDot(eps_grad_phi, scvf.normal());
 
-		// scale with hidden area of dendritic crosssection and Faraday const
-		flux *= scvfArea / F;
+		// scale with hidden area of dendritic crosssection
+		flux *= scvfArea;
 
 		// add to local defect
 		d(_PHI_, scvf.from()) -= flux;
@@ -435,15 +435,15 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		// E field over cylinder surface area (supposedly constant)
 		number el_surf_flux = m_permittivity_mem * u(_PHI_,co) / m_mem_thickness;
 
-		// scale by surface area and Faraday constant
-		el_surf_flux *= scvArea / F;
+		// scale by surface area
+		el_surf_flux *= scvArea;
 
 		d(_PHI_, co) -= el_surf_flux;
 
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 		{
-			d(_PHI_, co) += u(i, co) * m_vValency[i] * scvVolume;
+			d(_PHI_, co) += u(i, co) * m_vValency[i] * F * scvVolume;
 //std::cout << "charge density " << i << ": " << u(i, co) * m_vValency[i] * scvVolume << std::endl;
 		}
 	// ion concentrations
@@ -566,8 +566,8 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 			// compute flux density
 			number flux = VecDot(eps_grad, scvf.normal());
 
-			// scale with hidden area of dendritic crosssection and Faraday const
-			flux *= scvfArea / F;
+			// scale with hidden area of dendritic crosssection
+			flux *= scvfArea;
 
 			// add to local Jacobian
 			J(_PHI_, scvf.from(), _PHI_, sh) -= flux;
@@ -658,10 +658,10 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 
 	// potential equation
 		// E field over cylinder surface area
-		J(_PHI_, co, _PHI_, co) -= m_permittivity_mem / m_mem_thickness * scvArea / F;
+		J(_PHI_, co, _PHI_, co) -= m_permittivity_mem / m_mem_thickness * scvArea;
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
-			J(_PHI_, co, i, co) += m_vValency[i] * scvVolume;
+			J(_PHI_, co, i, co) += m_vValency[i] * F * scvVolume;
 
 	// ion concentrations
 		for (size_t i = 0; i < m_nIon; i++)
