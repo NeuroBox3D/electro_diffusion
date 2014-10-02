@@ -635,6 +635,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 				if (m_algInd[side].size()) J(constrdInd[0], m_algInd[side][fct]) += defDeriv[2];
 				if (m_algInd[c_side].size()) J(constrdInd[0], m_algInd[c_side][fct]) += defDeriv[3];
 
+				/*
 				// adapt rows for all constraining defects that depend on this constrained
 				std::vector<Vertex*>& allConstrainers = m_defectInfluenceMap[constrd];
 				for (size_t i = 0; i < allConstrainers.size(); i++)
@@ -661,6 +662,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 					// deriv wrt constrained vertex
 					J(cvInd[0], constrdInd[0]) = 0.0;
 				}
+				*/
 			}
 		}
 	}
