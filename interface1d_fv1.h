@@ -306,9 +306,11 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/// for every constrained vertex: finds the corresponding constrainer
 		void fill_constrainer_map();
 
+		/*
 		/// for every constrained vertex: collects the vertices in the constraining set
 		/// whose defect will be influenced by the constrained one
 		void fill_defect_influence_map();
+		 */
 
 	protected:
 		/// constrained functions

@@ -144,7 +144,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 
 // fill helper structures
 	fill_constrainer_map();
-	fill_defect_influence_map();
+	//fill_defect_influence_map();
 
 
 // find algebra indices for interface nodes
@@ -362,7 +362,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
 }
 
 
-
+/*
 /// for every constrained vertex: collects the vertices in the constraining set
 /// whose defect will be influenced by the constrained one
 template <typename TDomain, typename TAlgebra>
@@ -432,26 +432,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_defect_influence_map()
 			m_defectInfluenceMap[constrd].push_back(m_constrainerMap[constrd]);
 		}
 	}
-
-/* DEBUGGING
-	typedef std::map<Vertex*, std::vector<Vertex*> >::iterator map_it;
-	map_it iter = m_defectInfluenceMap.begin();
-	map_it iterEnd = m_defectInfluenceMap.end();
-	for (; iter != iterEnd; ++iter)
-	{
-		std::vector<size_t> ind1, ind2;
-		dd->inner_algebra_indices_for_fct(iter->first, ind1, false, 0);
-		UG_LOG(ind1[0] << " -> ");
-		for (size_t j=0; j< iter->second.size(); j++)
-		{
-			dd->inner_algebra_indices_for_fct(iter->second[j], ind2, true, 0);
-			UG_LOG(ind2[0] << " ");
-		}
-		UG_LOG("\n");
-	}
-*/
 }
-
+*/
 
 template <typename TDomain, typename TAlgebra>
 void IInterface1DFV1<TDomain, TAlgebra>::fill_sol_at_intf
@@ -569,6 +551,13 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 	std::vector<number> intf_val[2];
 	fill_sol_at_intf(intf_val, u, dd);
 
+	// map that is filled with the indices of constrained vertices (key)
+	// and their corresponding constraining indices (value)
+	// as well as which side of the interface they are located on
+	std::map<size_t, size_t> indexMap;
+	std::map<size_t, size_t> sideMap;
+	std::map<size_t, size_t> fctMap;
+
 // adjust jacobian parts for one side of the interface,
 // then switch roles and do the same thing for the other side
 	for (size_t side = 0; side < 2; side++)
@@ -608,12 +597,17 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
 				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
 
+				// fill index map
+				indexMap[constrdInd[0]] = constrgInd[0];
+				sideMap[constrdInd[0]] = side;
+				fctMap[constrdInd[0]] = fct;
+
 				// get defect derivatives for this vertex
 				typename vector_type::value_type defDeriv[4];
 				constrainedDefectDerivs(defDeriv, u[constrdInd[0]], u[constrgInd[0]],
 										intf_val[side][fct], intf_val[c_side][fct]);
 
-				// write Jacobian row for constrained (first: delete all couplings)
+				// write identity row for constrained (first: delete all couplings)
 				typedef typename matrix_type::row_iterator row_iterator;
 				{
 					// we put curly brackets around this so that the row_iterator will be removed afterwards
@@ -625,44 +619,70 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 
 				// avoid special cases (where e.g. constrdInd[0] == m_algInd[c_side][fct]))
 				// by adding up derivs instead of assigning directly
-				J(constrdInd[0], constrdInd[0])	= J(constrdInd[0], constrgInd[0]) = 0.0;
-				if (m_algInd[side].size()) J(constrdInd[0], m_algInd[side][fct]) = 0.0;
-				if (m_algInd[c_side].size()) J(constrdInd[0], m_algInd[c_side][fct]) = 0.0;
+				J(constrdInd[0], constrdInd[0])	= 1.0;
+				/*
 
 				// as PST is supposedly consistent: set correct values where it is possible
 				J(constrdInd[0], constrdInd[0]) += defDeriv[0];
 				J(constrdInd[0], constrgInd[0]) += defDeriv[1];
 				if (m_algInd[side].size()) J(constrdInd[0], m_algInd[side][fct]) += defDeriv[2];
 				if (m_algInd[c_side].size()) J(constrdInd[0], m_algInd[c_side][fct]) += defDeriv[3];
+				*/
+			}
+		}
+	}
 
-				/*
-				// adapt rows for all constraining defects that depend on this constrained
-				std::vector<Vertex*>& allConstrainers = m_defectInfluenceMap[constrd];
-				for (size_t i = 0; i < allConstrainers.size(); i++)
+	// adapt rows for all constraining defects that depend on this constrained
+	// including possibly defects from other equations (if coupled)
+	{
+		typedef typename matrix_type::row_iterator row_iterator;
+
+		size_t nr = J.num_rows();
+
+		// loop rows
+		for (size_t i = 0; i < nr; i++)
+		{
+			// do not adjust constrained rows
+			if (indexMap.find(i) != indexMap.end())
+				continue;
+
+			// loop column existing entries of row
+			for (row_iterator rit = J.begin_row(i); rit != J.end_row(i); ++rit)
+			{
+				// if a column index is part of the constrained set, then adjust row
+				typename std::map<size_t, size_t>::iterator indMapIt = indexMap.find(rit.index());
+				if (indMapIt != indexMap.end())
 				{
-					Vertex* cv = allConstrainers[i];
+					// get side of the interface and function that this constrained vertex is associated to
+					typename std::map<size_t, size_t>::iterator mapIt = sideMap.find(rit.index());
+					UG_ASSERT(mapIt != sideMap.end(), "Found constrained index without information "
+							  "as to which side of the interface it belongs to.")
+					size_t side = mapIt->second;
+					size_t c_side = (side+1) % 2;
 
-					// get index
-					std::vector<size_t> cvInd;
-					int si = dd->subset_handler()->get_subset_index(cv);
-					if (!dd->is_def_in_subset(m_vFct[fct], si))
-						{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-					dd->inner_algebra_indices_for_fct(cv, cvInd, false, m_vFct[fct]);
-					UG_ASSERT(cvInd.size() == 1, "More (or less) than one function index found on a vertex!");
+					mapIt = fctMap.find(rit.index());
+					UG_ASSERT(mapIt != fctMap.end(), "Found constrained index without information "
+							  "as to which function it belongs to.")
+					size_t fct = mapIt->second;
+
+					// we need to adjust the columns corresponding to the constrainer
+					// and the interface nodes; then delete the constrained column entry
+					typename vector_type::value_type defDeriv[4];
+					constrainedDefectDerivs(defDeriv, u[indMapIt->first], u[indMapIt->second],
+											intf_val[side][fct], intf_val[c_side][fct]);
 
 					// deriv wrt constraining
-					J(cvInd[0], constrgInd[0]) += J(cvInd[0], constrdInd[0]) * defDeriv[1];
+					J(i, indMapIt->second) += J(i, indMapIt->first) * defDeriv[1];
 
 					// deriv wrt interface vertex on constraining side
-					if (m_algInd[side].size()) J(cvInd[0], m_algInd[side][fct]) += J(cvInd[0], constrdInd[0]) * defDeriv[2];
+					if (m_algInd[side].size()) J(i, m_algInd[side][fct]) += J(i, indMapIt->first) * defDeriv[2];
 
 					// deriv wrt interface vertex on constrained side
-					if (m_algInd[c_side].size()) J(cvInd[0], m_algInd[c_side][fct]) += J(cvInd[0], constrdInd[0]) * defDeriv[3];
+					if (m_algInd[c_side].size()) J(i, m_algInd[c_side][fct]) += J(i, indMapIt->first) * defDeriv[3];
 
 					// deriv wrt constrained vertex
-					J(cvInd[0], constrdInd[0]) = 0.0;
+					J(i, indMapIt->first) = 0.0;
 				}
-				*/
 			}
 		}
 	}
