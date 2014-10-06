@@ -11,7 +11,7 @@
 #include "nernst_planck_util.h"
 #include "PNP_1D.h"
 #include "interface1d_fv1.h"
-#include "constrained_ilu.h"
+//#include "constrained_ilu.h"
 #include "electric_circuit.h"
 
 using namespace std;
@@ -91,7 +91,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);
 	}
 
-	//	ILUC preconditioner
+	/*
+	//	ILUC preconditioner (no longer needed)
 	{
 		typedef ILUC<TDomain, TAlgebra> T;
 		typedef IPreconditioner<TAlgebra> TBase;
@@ -104,6 +105,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ILUC", tag);
 	}
+	*/
 }
 
 /**

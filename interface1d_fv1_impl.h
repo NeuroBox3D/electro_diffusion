@@ -20,7 +20,7 @@ IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 )
 	: m_ssiExt(0), m_ssiIN(0)
 {
-// store function names
+	// store function names
 	// transform into vector
 	if (fcts == NULL) fcts = "";
 	m_vsFct = TokenizeString(fcts);
@@ -42,7 +42,7 @@ IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 		}
 	}
 
-// store subset names
+	// store subset names
 	m_sssiExt = std::string(extension_subset);
 	m_sssiIN = std::string(two_dim_intfNode);
 	m_sssi[0] = std::string(high_dim_subset);
@@ -141,12 +141,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 				  "geometry handled by this domain's subset handler");
 	}
 
-
-// fill helper structures
-	fill_constrainer_map();
-	//fill_defect_influence_map();
-
-
 // find algebra indices for interface nodes
 // The way this is done here is as follows:
 // 1a) Find the constrained vertex on the 1d side uniquely identified by one_dim_subset.
@@ -202,8 +196,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 
 	// 2)
 	iter = dd->begin<Vertex>(m_ssiIN);
-
-	// the dist for the correct node must be _exactly_ zero
 	if (iter == dd->end<Vertex>(m_ssiIN))
 	{
 #ifndef UG_PARALLEL
@@ -225,8 +217,15 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 			{UG_THROW("More than one vertex in full-dim interface node subset. This is not allowed!");}
 	}
 
+	// both interface nodes must be on the same processor
+	if ((iv1 != NULL) != (iv2 != NULL))
+	{
+		UG_THROW("The interface nodes of this interface are not both located on the same processor.\n"
+				"This is not allowed (as it will typically engender convergence problems).");
+	}
+
 	// get algebra indices
-	if (iv1)
+	if (iv1 != NULL && iv2 != NULL)
 	{
 		int ssi1 = dom->subset_handler()->get_subset_index(iv1);
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
@@ -244,10 +243,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 
 			m_algInd[1].push_back(ind1[0]);
 		}
-	}
 
-	if (iv2)
-	{
 		int ssi2 = dom->subset_handler()->get_subset_index(iv2);
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
 		{
@@ -265,18 +261,32 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 			m_algInd[0].push_back(ind2[0]);
 		}
 	}
+
+// find constrainers for every constrained vertex
+	fill_constraint_map();
+
+	// disallow constrained nodes without having the interface nodes on the same processor
+	if (m_constraintMap.size() && !(iv1 && iv2))
+	{
+		UG_THROW("Processor has constrained nodes but not the necessary interface nodes. This is not allowed.\n"
+				 "Make sure the constrained nodes are not separated from their interface nodes by the partitioning.");
+	}
 }
 
 
 
-/// for every constrained vertex: finds the corresponding constrainer
+/// for every constrained vertex: finds the corresponding constrainer and
+/// fills the constrainer map with the pair of corresponding indices
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
+void IInterface1DFV1<TDomain, TAlgebra>::fill_constraint_map()
 {
 	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
 
 	ConstSmartPtr<DoFDistribution> dd = this->m_spApproxSpace->dof_distribution(GridLevel());
 	SmartPtr<TDomain> dom = this->approximation_space()->domain();
+
+	// number of functions
+	size_t numFct = m_vFct.size();
 
 	// high-dimensional end
 	{
@@ -305,8 +315,34 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
 				}
 			}
 
+			// ensure that the constrainer has been found
 			if (!constrg) {UG_THROW("No constrainer found!");}
-			else m_constrainerMap[constrd] = constrg;
+
+		// find indices
+			// loop functions
+			for (size_t fct = 0; fct < numFct; fct++)
+			{
+				std::vector<size_t> constrdInd;
+				std::vector<size_t> constrgInd;
+
+				// constrained index
+				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[0]))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[0] << ".");}
+				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
+
+				// constraining index
+				int si = dd->subset_handler()->get_subset_index(constrg);
+				if (!dd->is_def_in_subset(m_vFct[fct], si))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
+				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
+
+				// should not happen, but for debugging purposes:
+				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
+				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
+
+				// fill map with pair of indices
+				m_constraintMap[constrdInd[0]] = ConstraintInfo(constrgInd[0], fct, 0);
+			}
 		}
 	}
 
@@ -326,25 +362,46 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
 			dom->grid()->associated_elements(el, constrd);
 
 			// find edge in the 1d extension domain subset and take other end
-			Vertex* other = NULL;
+			Vertex* constrg = NULL;
 			for (size_t i = 0; i < el.size(); i++)
 			{
 				if (dom->subset_handler()->get_subset_index(el[i]) == m_ssiExt)
 				{
-					el[i]->get_opposing_side(constrd, &other);
+					el[i]->get_opposing_side(constrd, &constrg);
 					break;
 				}
 			}
-			if (!other)
+			if (!constrg)
 			{
 				UG_THROW("Constrained vertex on 1d end is not connected to any edge of the extension."
 						 "This case is not permitted.");
 			}
 
-			if (dom->subset_handler()->get_subset_index(other) != m_ssi[1])
-				 m_constrainerMap[constrd] = other;
-			else
-				{UG_THROW("Connected constrainer is in the constrained subset!");}
+		// find indices
+			// loop functions
+			for (size_t fct = 0; fct < numFct; fct++)
+			{
+				std::vector<size_t> constrdInd;
+				std::vector<size_t> constrgInd;
+
+				// constrained index
+				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[1]))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[1] << ".");}
+				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
+
+				// constraining index
+				int si = dd->subset_handler()->get_subset_index(constrg);
+				if (!dd->is_def_in_subset(m_vFct[fct], si))
+					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
+				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
+
+				// should not happen, but for debugging purposes:
+				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
+				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
+
+				// fill map with pair of indices
+				m_constraintMap[constrdInd[0]] = ConstraintInfo(constrgInd[0], fct, 1);
+			}
 		}
 	}
 /* DEBUGGING
@@ -362,163 +419,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constrainer_map()
 }
 
 
-/*
-/// for every constrained vertex: collects the vertices in the constraining set
-/// whose defect will be influenced by the constrained one
-template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::fill_defect_influence_map()
-{
-	typedef typename MultiGrid::traits<elem_type>::secure_container elem_list;
-	typedef typename MultiGrid::traits<Vertex>::secure_container vertex_list;
-
-	ConstSmartPtr<DoFDistribution> dd = this->approximation_space()->dof_distribution(GridLevel());
-	SmartPtr<TDomain> dom = this->approximation_space()->domain();
-
-	// high-dimensional end
-	{
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[0]);
-		iterEnd = dd->end<Vertex>(m_ssi[0]);
-
-		for (; iter != iterEnd; ++iter)
-		{
-			// get constrained vertex
-			Vertex* constrd = *iter;
-
-			// find the vertices in the constraining subset whose defect depends on this constrained dof
-			elem_list el;
-			dom->grid()->associated_elements(el, constrd);
-
-			// remember vertices already pushed back to avoid double entries
-			std::map<Vertex*, bool> considered;
-
-			// loop all associated elements
-			for (size_t elem = 0; elem < el.size(); elem++)
-			{
-				// get vertices associated to this elem
-				vertex_list otherVertices;
-				dom->grid()->associated_elements(otherVertices, el[elem]);
-
-				// loop vertices
-				for (size_t vrt = 0; vrt < otherVertices.size(); vrt++)
-				{
-					Vertex* other = otherVertices[vrt];
-
-					// only add if subset index matches constrained set and not yet added
-					if (dom->subset_handler()->get_subset_index(other) == m_ssi[0]
-						&& !considered[other])
-					{
-						considered[other] = true;
-						UG_ASSERT(m_constrainerMap.find(other) != m_constrainerMap.end(),
-								 "Discovered constrained index that is no key in constrainer map!");
-						m_defectInfluenceMap[constrd].push_back(m_constrainerMap[other]);
-					}
-				}
-			}
-		}
-	}
-
-	// 1d end
-	{
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[1]);
-		iterEnd = dd->end<Vertex>(m_ssi[1]);
-
-		for (; iter != iterEnd; ++iter)
-		{
-			// get constrained vertex
-			Vertex* constrd = *iter;
-
-			m_defectInfluenceMap[constrd].push_back(m_constrainerMap[constrd]);
-		}
-	}
-}
-*/
-
-template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::fill_sol_at_intf
-(
-	std::vector<number> intf_val[2],
-	const vector_type& u,
-	ConstSmartPtr<DoFDistribution> dd
-)
-{
-	size_t numFct = m_vFct.size();
-
-	// resize
-	intf_val[0].resize(numFct);
-	intf_val[1].resize(numFct);
-
-#ifdef UG_PARALLEL
-if (pcl::NumProcs() > 1)
-{
-// communicate here: get values for u at interface nodes (as they might not be present on this proc)
-	pcl::ProcessCommunicator com;
-
-	// compose one vector of all values u[m_algInd[side][fct]]
-	// and add two control values that will indicate how many procs possessed the values
-	std::vector<number> comm_vec(2*numFct+2, 0.0);
-	if (m_algInd[0].size() == numFct)
-	{
-		for (size_t fct = 0; fct < numFct; fct++)
-			comm_vec[fct] = u[m_algInd[0][fct]];
-
-		comm_vec[2*numFct] = 1.0;
-	}
-	if (m_algInd[1].size() == numFct)
-	{
-		for (size_t fct = 0; fct < numFct; fct++)
-			comm_vec[numFct+fct] = u[m_algInd[1][fct]];
-
-		comm_vec[2*numFct+1] = 1.0;
-	}
-
-	std::vector<number> comm_receive;
-
-	/* TODO: We have a problem here when using GMG:
-	 * This method is called by adjust_jacobian() and that one is called after
-	 * assembling the jacobian on the base level. If the base solver is gathered
-	 * (i.e. executed only on one process), only the executing process will arrive
-	 * here and the others will not take part in the communication.
-	 * In fact, they are waiting at a defect computation communication point for
-	 * the solver which contains the GMG and therefore, this will produce strange
-	 * MPI errors, like "MPI ERROR: MPI_ERR_TRUNCATE: message truncated".
-	 */
-
-	// communicate: compute the sum over all processes and send it back to all
-	com.allreduce(comm_vec, comm_receive, PCL_RO_SUM);
-
-	// now check the result
-	if (!comm_receive[2*numFct])
-		{UG_THROW("No processor possesses information about the full-dim side interface node!");}
-	if (!comm_receive[2*numFct+1])
-		{UG_THROW("No processor possesses information about the 1D side interface node!");}
-
-	// in case more than one processor possessed the necessary values: divide by number
-	for (size_t fct = 0; fct < numFct; fct++)
-	{
-		intf_val[0][fct] = comm_receive[fct] / comm_receive[2*numFct];
-		intf_val[1][fct] = comm_receive[numFct+fct] / comm_receive[2*numFct+1];
-	}
-}
-else
-{
-	for (size_t fct = 0; fct < numFct; fct++)
-	{
-		intf_val[0][fct] = u[m_algInd[0][fct]];
-		intf_val[1][fct] = u[m_algInd[1][fct]];
-	}
-}
-#else
-	for (size_t fct = 0; fct < numFct; fct++)
-	{
-		intf_val[0][fct] = u[m_algInd[0][fct]];
-		intf_val[1][fct] = u[m_algInd[1][fct]];
-	}
-#endif
-}
-
-
 ///	adapts jacobian to enforce constraints
 template <typename TDomain, typename TAlgebra>
 void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
@@ -530,9 +430,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 	const number s_a0
 )
 {
-	size_t numFct = m_vFct.size();
-
-	/*
+/*
 #ifdef UG_PARALLEL
 	// check parallel storage type
 	if (pcl::NumProcs() > 1 &&
@@ -548,141 +446,63 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 	// It will still have PST "additive" afterwards.
 #endif
 */
-	std::vector<number> intf_val[2];
-	fill_sol_at_intf(intf_val, u, dd);
 
-	// map that is filled with the indices of constrained vertices (key)
-	// and their corresponding constraining indices (value)
-	// as well as which side of the interface they are located on
-	std::map<size_t, size_t> indexMap;
-	std::map<size_t, size_t> sideMap;
-	std::map<size_t, size_t> fctMap;
+	typedef typename matrix_type::row_iterator row_iterator;
 
-// adjust jacobian parts for one side of the interface,
-// then switch roles and do the same thing for the other side
-	for (size_t side = 0; side < 2; side++)
+	// loop rows
+	size_t nr = J.num_rows();
+	for (size_t i = 0; i < nr; i++)
 	{
-		// side is the constraining side; c_side the constrained one
-		size_t c_side = (side+1) % 2;
-
-		// loop constrained vertices
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[side]);
-		iterEnd = dd->end<Vertex>(m_ssi[side]);
-
-		for (; iter != iterEnd; ++iter)
+		// write identity row for constrained (first: delete all couplings)
+		if (m_constraintMap.find(i) != m_constraintMap.end())
 		{
-			// get constrained and constraining vertex
-			Vertex* constrd = *iter;
-			Vertex* constrg = m_constrainerMap[constrd];
-
-			// loop functions
-			for (size_t fct = 0; fct < numFct; fct++)
+			// we put curly brackets around this so that the row_iterator will be removed afterwards
+			// otherwise, we get a negative assert from the matrix implementation
 			{
-				std::vector<size_t> constrdInd;
-				std::vector<size_t> constrgInd;
+				const row_iterator iterEnd = J.end_row(i);
+				for (row_iterator conn = J.begin_row(i); conn != iterEnd; ++conn)
+					conn.value() = 0.0;
+			}
+			J(i, i)	= 1.0;
 
-				// constrained index
-				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
-				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
+			// do not alter the columns after that!
+			continue;
+		}
 
-				// constraining index
-				int si = dd->subset_handler()->get_subset_index(constrg);
-				if (!dd->is_def_in_subset(m_vFct[fct], si))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
+		// adapt current row if it depends on any constrained value
+		// including constraints from other equations (if coupled)
 
-				// should not happen, but for debugging purposes:
-				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
+		// loop column existing entries of row
+		for (row_iterator rit = J.begin_row(i); rit != J.end_row(i); ++rit)
+		{
+			// if a column index is part of the constrained set, then adjust row
+			typename std::map<size_t, ConstraintInfo>::iterator constraintMapIt
+				= m_constraintMap.find(rit.index());
 
-				// fill index map
-				indexMap[constrdInd[0]] = constrgInd[0];
-				sideMap[constrdInd[0]] = side;
-				fctMap[constrdInd[0]] = fct;
+			if (constraintMapIt != m_constraintMap.end())
+			{
+				size_t constrdInd = constraintMapIt->first;
+				size_t constrgInd = constraintMapIt->second.constrgInd;
+				size_t fct = constraintMapIt->second.fct;
+				size_t side = constraintMapIt->second.side;
+				size_t intfSideInd = m_algInd[side][fct];
+				size_t intfCSideInd = m_algInd[(side+1) % 2][fct];
 
 				// get defect derivatives for this vertex
-				typename vector_type::value_type defDeriv[4];
-				constrainedDefectDerivs(defDeriv, u[constrdInd[0]], u[constrgInd[0]],
-										intf_val[side][fct], intf_val[c_side][fct]);
+				typename vector_type::value_type defDeriv[3];
+				constraintValueDerivs(defDeriv, u[constrgInd], u[intfSideInd], u[intfCSideInd]);
 
-				// write identity row for constrained (first: delete all couplings)
-				typedef typename matrix_type::row_iterator row_iterator;
-				{
-					// we put curly brackets around this so that the row_iterator will be removed afterwards
-					// otherwise, we get a negative assert from the matrix implementation
-					const row_iterator iterEnd = J.end_row(constrdInd[0]);
-					for (row_iterator conn = J.begin_row(constrdInd[0]); conn != iterEnd; ++conn)
-						conn.value() = 0.0;
-				}
+				// deriv wrt constraining
+				J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
 
-				// avoid special cases (where e.g. constrdInd[0] == m_algInd[c_side][fct]))
-				// by adding up derivs instead of assigning directly
-				J(constrdInd[0], constrdInd[0])	= 1.0;
-				/*
+				// deriv wrt interface vertex on constraining side
+				J(i, intfSideInd) += J(i, constrdInd) * defDeriv[1];
 
-				// as PST is supposedly consistent: set correct values where it is possible
-				J(constrdInd[0], constrdInd[0]) += defDeriv[0];
-				J(constrdInd[0], constrgInd[0]) += defDeriv[1];
-				if (m_algInd[side].size()) J(constrdInd[0], m_algInd[side][fct]) += defDeriv[2];
-				if (m_algInd[c_side].size()) J(constrdInd[0], m_algInd[c_side][fct]) += defDeriv[3];
-				*/
-			}
-		}
-	}
+				// deriv wrt interface vertex on constrained side
+				J(i, intfCSideInd) += J(i, constrdInd) * defDeriv[2];
 
-	// adapt rows for all constraining defects that depend on this constrained
-	// including possibly defects from other equations (if coupled)
-	{
-		typedef typename matrix_type::row_iterator row_iterator;
-
-		size_t nr = J.num_rows();
-
-		// loop rows
-		for (size_t i = 0; i < nr; i++)
-		{
-			// do not adjust constrained rows
-			if (indexMap.find(i) != indexMap.end())
-				continue;
-
-			// loop column existing entries of row
-			for (row_iterator rit = J.begin_row(i); rit != J.end_row(i); ++rit)
-			{
-				// if a column index is part of the constrained set, then adjust row
-				typename std::map<size_t, size_t>::iterator indMapIt = indexMap.find(rit.index());
-				if (indMapIt != indexMap.end())
-				{
-					// get side of the interface and function that this constrained vertex is associated to
-					typename std::map<size_t, size_t>::iterator mapIt = sideMap.find(rit.index());
-					UG_ASSERT(mapIt != sideMap.end(), "Found constrained index without information "
-							  "as to which side of the interface it belongs to.")
-					size_t side = mapIt->second;
-					size_t c_side = (side+1) % 2;
-
-					mapIt = fctMap.find(rit.index());
-					UG_ASSERT(mapIt != fctMap.end(), "Found constrained index without information "
-							  "as to which function it belongs to.")
-					size_t fct = mapIt->second;
-
-					// we need to adjust the columns corresponding to the constrainer
-					// and the interface nodes; then delete the constrained column entry
-					typename vector_type::value_type defDeriv[4];
-					constrainedDefectDerivs(defDeriv, u[indMapIt->first], u[indMapIt->second],
-											intf_val[side][fct], intf_val[c_side][fct]);
-
-					// deriv wrt constraining
-					J(i, indMapIt->second) += J(i, indMapIt->first) * defDeriv[1];
-
-					// deriv wrt interface vertex on constraining side
-					if (m_algInd[side].size()) J(i, m_algInd[side][fct]) += J(i, indMapIt->first) * defDeriv[2];
-
-					// deriv wrt interface vertex on constrained side
-					if (m_algInd[c_side].size()) J(i, m_algInd[c_side][fct]) += J(i, indMapIt->first) * defDeriv[3];
-
-					// deriv wrt constrained vertex
-					J(i, indMapIt->first) = 0.0;
-				}
+				// deriv wrt constrained vertex
+				J(i, constrdInd) = 0.0;
 			}
 		}
 	}
@@ -702,36 +522,13 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 	const std::vector<number>* vScaleStiff
 )
 {
-	size_t numFct = m_vFct.size();
-
-	// loop constrained vertices on the first side of the interface,
-	// then switch roles and do the same thing for the other side
-	for (size_t side = 0; side < 2; side++)
+	// loop constrained vertices
+	typename std::map<size_t, ConstraintInfo>::iterator constraintMapEnd = m_constraintMap.end();
+	typename std::map<size_t, ConstraintInfo>::iterator constraintMapIt;
+	for (constraintMapIt = m_constraintMap.begin(); constraintMapIt != constraintMapEnd; ++constraintMapIt)
 	{
-		// side is the constraining side; c_side the constrained one
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[side]);
-		iterEnd = dd->end<Vertex>(m_ssi[side]);
-
-		for (; iter != iterEnd; ++iter)
-		{
-			// loop functions
-			for (size_t fct = 0; fct < numFct; fct++)
-			{
-				std::vector<size_t> constrdInd;
-				//std::vector<size_t> constrgInd;
-
-				// constrained index
-				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
-				dd->inner_algebra_indices_for_fct(*iter, constrdInd, false, m_vFct[fct]);
-
-				// better convergence results are yielded
-				// by adjusting the solution before computing the defect
-				// which automatically reduces the defect to 0
-				d[constrdInd[0]] = 0.0;
-			}
-		}
+		size_t index = constraintMapIt->first;
+		d[index] = 0.0;
 	}
 }
 
@@ -761,55 +558,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_rhs
 )
 {
 	UG_THROW("This feature is deactivated in order to test, whether it is needed in the first place.");
-	// in order to activate, you will probably have to comment in the code below
-	/*
-	size_t numFct = m_vFct.size();
-
-	// loop constrained vertices on the first side of the interface,
-	// then switch roles and do the same thing for the other side
-	for (size_t side = 0; side < 2; side++)
-	{
-		// side is the constraining side; c_side the constrained one
-		size_t c_side = (side+1) % 2;
-
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[side]);
-		iterEnd = dd->end<Vertex>(m_ssi[side]);
-
-		for (; iter != iterEnd; ++iter)
-		{
-			// get constrained and constraining vertices
-			Vertex* constrd = *iter;
-			Vertex* constrg = m_constrainerMap[constrd];
-
-			// loop functions
-			for (size_t fct = 0; fct < numFct; fct++)
-			{
-				std::vector<size_t> constrdInd;
-				std::vector<size_t> constrgInd;
-
-				// constrained index
-				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
-				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
-
-				// constraining index
-				int si = dd->subset_handler()->get_subset_index(constrg);
-				if (!dd->is_def_in_subset(m_vFct[fct], si))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
-
-				// should not happen, but for debugging purposes:
-				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
-
-				// constrain defect
-				constrainedDefect(rhs[constrdIndex[0]], u[constrdInd[0]], u[constrgInd[0]],
-								  u[alg_ind[side][fct]], u[alg_ind[c_side][fct]]);
-			}
-		}
-	}
-	*/
 }
 
 
@@ -822,8 +570,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
 	number time
 )
 {
-	size_t numFct = m_vFct.size();
-
 #ifdef UG_PARALLEL
 	// check parallel storage type
 	if (pcl::NumProcs() > 1 &&
@@ -834,132 +580,22 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
 	}
 #endif
 
-	std::vector<number> intf_val[2];
-	fill_sol_at_intf(intf_val, u, dd);
-
-	// loop constrained vertices on the first side of the interface,
-	// then switch roles and do the same thing for the other side
-	for (size_t side = 0; side < 2; side++)
+	// loop constrained vertices
+	typename std::map<size_t, ConstraintInfo>::iterator constraintMapEnd = m_constraintMap.end();
+	typename std::map<size_t, ConstraintInfo>::iterator constraintMapIt;
+	for (constraintMapIt = m_constraintMap.begin(); constraintMapIt != constraintMapEnd; ++constraintMapIt)
 	{
-		// side is the constraining side; c_side the constrained one
-		size_t c_side = (side+1) % 2;
+		size_t constrdInd = constraintMapIt->first;
+		size_t constrgInd = constraintMapIt->second.constrgInd;
+		size_t fct = constraintMapIt->second.fct;
+		size_t side = constraintMapIt->second.side;
+		size_t intfSideInd = m_algInd[side][fct];
+		size_t intfCSideInd = m_algInd[(side+1) % 2][fct];
 
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[side]);
-		iterEnd = dd->end<Vertex>(m_ssi[side]);
+		typename vector_type::value_type def;
+		constraintValue(def, u[constrgInd], u[intfSideInd], u[intfCSideInd]);
 
-		for (; iter != iterEnd; ++iter)
-		{
-			// get constrained and constraining vertices
-			Vertex* constrd = *iter;
-			Vertex* constrg = m_constrainerMap[constrd];
-
-			// loop functions
-			for (size_t fct = 0; fct < numFct; fct++)
-			{
-				std::vector<size_t> constrdInd;
-				std::vector<size_t> constrgInd;
-
-				// constrained index
-				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
-				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
-
-				// constraining index
-				int si = dd->subset_handler()->get_subset_index(constrg);
-				if (!dd->is_def_in_subset(m_vFct[fct], si))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
-
-				// should not happen, but for debugging purposes:
-				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
-
-				// constrain defect
-				typename vector_type::value_type def;
-				constrainedDefect(def, u[constrdInd[0]], u[constrgInd[0]],
-								  intf_val[side][fct], intf_val[c_side][fct]);
-
-				u[constrdInd[0]] += def;
-			}
-		}
-	}
-}
-
-/// additional linear adjustment for use inside linear solver
-template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution_linear
-(	vector_type& u,
-	ConstSmartPtr<DoFDistribution> dd,
-	SmartPtr<MatrixOperator<matrix_type, vector_type> > J,
-	number time
-)
-{
-	size_t numFct = m_vFct.size();
-
-#ifdef UG_PARALLEL
-	// check parallel storage type
-	if (pcl::NumProcs() > 1 &&
-		(!u.has_storage_type(PST_CONSISTENT)))
-	{
-		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but it does not. PST is '" << u.get_storage_type() << "'.");
-	}
-#endif
-
-	std::vector<number> intf_val[2];
-	fill_sol_at_intf(intf_val, u, dd);
-
-	// loop constrained vertices on the first side of the interface,
-	// then switch roles and do the same thing for the other side
-	for (size_t side = 0; side < 2; side++)
-	{
-		// side is the constraining side; c_side the constrained one
-		size_t c_side = (side+1) % 2;
-
-		DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-		iter = dd->begin<Vertex>(m_ssi[side]);
-		iterEnd = dd->end<Vertex>(m_ssi[side]);
-
-		for (; iter != iterEnd; ++iter)
-		{
-			// get constrained and constraining vertices
-			Vertex* constrd = *iter;
-			Vertex* constrg = m_constrainerMap[constrd];
-
-			// loop functions
-			for (size_t fct = 0; fct < numFct; fct++)
-			{
-				std::vector<size_t> constrdInd;
-				std::vector<size_t> constrgInd;
-
-				// constrained index
-				if (!dd->is_def_in_subset(m_vFct[fct], m_ssi[side]))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_ssi[side] << ".");}
-				dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
-
-				// constraining index
-				int si = dd->subset_handler()->get_subset_index(constrg);
-				if (!dd->is_def_in_subset(m_vFct[fct], si))
-					{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-				dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
-
-				// should not happen, but for debugging purposes:
-				UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-				UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
-
-				// constrain defect
-				// get defect derivatives for this vertex
-				matrix_type& M = J->get_matrix();
-
-				// write Jacobian row for constrained (first: delete all couplings)
-				u[constrdInd[0]] = M(constrdInd[0], constrgInd[0])*u[constrgInd[0]];
-				if (m_algInd[side].size())
-					u[constrdInd[0]] += M(constrdInd[0], m_algInd[side][fct])*intf_val[side][fct];
-				if (m_algInd[c_side].size())
-					u[constrdInd[0]] += M(constrdInd[0], m_algInd[c_side][fct])*intf_val[c_side][fct];
-			}
-		}
+		u[constrdInd] = def;
 	}
 }
 
@@ -982,31 +618,28 @@ AdditiveInterface1DFV1<TDomain, TAlgebra>::AdditiveInterface1DFV1
 
 /// function returning the defect value for a constrained node
 template <typename TDomain, typename TAlgebra>
-void AdditiveInterface1DFV1<TDomain, TAlgebra>::constrainedDefect
+void AdditiveInterface1DFV1<TDomain, TAlgebra>::constraintValue
 (	typename vector_type::value_type& d,
-	const typename vector_type::value_type& u,
 	const typename vector_type::value_type& u_c,
 	const typename vector_type::value_type& u_itf0,
 	const typename vector_type::value_type& u_itf1
 )
 {
-	d = -u + u_c + (u_itf1 - u_itf0);
+	d = u_c + (u_itf1 - u_itf0);
 }
 
 /// function returning the defect derivatives for a constrained node
 template <typename TDomain, typename TAlgebra>
-void AdditiveInterface1DFV1<TDomain, TAlgebra>::constrainedDefectDerivs
-(	typename vector_type::value_type dd[4],
-	const typename vector_type::value_type& u,
+void AdditiveInterface1DFV1<TDomain, TAlgebra>::constraintValueDerivs
+(	typename vector_type::value_type dd[3],
 	const typename vector_type::value_type& u_c,
 	const typename vector_type::value_type& u_itf0,
 	const typename vector_type::value_type& u_itf1
 )
 {
-	dd[0] = -1.0;
-	dd[1] =  1.0;
-	dd[2] = -1.0;
-	dd[3] =  1.0;
+	dd[0] =  1.0;
+	dd[1] = -1.0;
+	dd[2] =  1.0;
 }
 
 
@@ -1029,9 +662,8 @@ MultiplicativeInterface1DFV1<TDomain, TAlgebra>::MultiplicativeInterface1DFV1
 
 /// function returning the defect value for a constrained node
 template <typename TDomain, typename TAlgebra>
-void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefect
+void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constraintValue
 (	typename vector_type::value_type& d,
-	const typename vector_type::value_type& u,
 	const typename vector_type::value_type& u_c,
 	const typename vector_type::value_type& u_itf0,
 	const typename vector_type::value_type& u_itf1
@@ -1040,14 +672,13 @@ void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefect
 	if (std::fabs(u_itf0) < 2 * std::numeric_limits<typename vector_type::value_type>::denorm_min())
 		{UG_THROW("Denominator practically zero (" << u_itf0 << ").");}
 
-	d = -u + u_c * (u_itf1 / u_itf0);
+	d = u_c * (u_itf1 / u_itf0);
 }
 
 /// function returning the defect derivatives for a constrained node
 template <typename TDomain, typename TAlgebra>
-void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefectDerivs
-(	typename vector_type::value_type dd[4],
-	const typename vector_type::value_type& u,
+void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constraintValueDerivs
+(	typename vector_type::value_type dd[3],
 	const typename vector_type::value_type& u_c,
 	const typename vector_type::value_type& u_itf0,
 	const typename vector_type::value_type& u_itf1
@@ -1056,10 +687,9 @@ void MultiplicativeInterface1DFV1<TDomain, TAlgebra>::constrainedDefectDerivs
 	if (std::fabs(u_itf0) < 2 * std::numeric_limits<typename vector_type::value_type>::denorm_min())
 		{UG_THROW("Denominator practically zero.");}
 
-	dd[0] = -1.0;
-	dd[1] =  u_itf1 / u_itf0;
-	dd[2] = -u_c * u_itf1 / (u_itf0*u_itf0);
-	dd[3] =  u_c / u_itf0;
+	dd[0] =  u_itf1 / u_itf0;
+	dd[1] = -u_c * u_itf1 / (u_itf0*u_itf0);
+	dd[2] =  u_c / u_itf0;
 }
 
 } // namespace nernst_planck

@@ -95,15 +95,15 @@ namespace nernst_planck{
  * In order to define such a function, you will have to derive your own interface
  * class from this base class and implement the two virtual methods
  *
- * - constrainedDefect
- * - constrainedDefectDerivs
+ * - constraintValue
+ * - constraintValueDerivs
  *
- * constrainedDefect must calculate the defect of the constraints, i.e.
+ * constraintValue must calculate the value of the constraints, i.e.
  * \f[
- *      -u^\ast + f(u,u_1,u_2);
+ *      f(u,u_1,u_2);
  * \f]
- * constrainedDefectDerivs must calculate the partial derivations wrt
- * \f$ u^\ast \f$, \f$ u \f$, \f$ u_1 \f$, \f$ u_2 \f$ thereof.
+ * constraintValueDerivs must calculate the partial derivations wrt
+ * \f$ u \f$, \f$ u_1 \f$, \f$ u_2 \f$ thereof.
  * Cf. documentation of the virtual methods.
  *
  * Two default implementations are realized in the derived classes
@@ -232,32 +232,16 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 			number time = 0.0
 		);
 
-		/// additional linear adjustment for use inside linear solver
-		virtual void adjust_solution_linear
-		(	vector_type& u,
-			ConstSmartPtr<DoFDistribution> dd,
-			SmartPtr<MatrixOperator<matrix_type, vector_type> > J,
-			number time = 0.0
-		);
-
 	protected:
 		/// called when the approximation space has changed
 		void approximation_space_changed();
-
-		/// sourced-out function for (esp.) parallel procuration of solution values at interface nodes
-		void fill_sol_at_intf
-		(
-			std::vector<number> intf_val[2],
-			const vector_type& u,
-			ConstSmartPtr<DoFDistribution> dd
-		);
 
 	public:
 		// methods to be implemented by a concretization of this interface
 
 		/// function returning the defect value for a constrained node
 		/**
-		 * The defect is: -constrainedDoF + f(constrainingDoF, interfaceDoF0, interfaceDoF1),
+		 * The defect is: f(constrainingDoF, interfaceDoF0, interfaceDoF1),
 		 * where f is any inter-/extrapolating function that is suited to calculate the value
 		 * for the constrainedDoF from the values of the constraining DoF and the two interface
 		 * DoFs. Of course, f should be differentiable.
@@ -265,14 +249,12 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		 * interfaceDoF1 is on the side of the constrainedDoF.
 		 *
 		 * @param d			defect value at constrained vertex; this is the output
-		 * @param u			solution at constrained vertex
 		 * @param u_c		solution at corresponding constrainer vertex
 		 * @param u_itf0	solution at interface vertex on constraining side
 		 * @param u_itf1	solution at interface vertex on constrained side
 		 */
-		virtual void constrainedDefect
+		virtual void constraintValue
 		(	typename vector_type::value_type& d,
-			const typename vector_type::value_type& u,
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
@@ -280,7 +262,7 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 
 		/// function returning the defect derivatives for a constrained node
 		/**
-		 * The defect is: -constrainedDoF + f(constrainingDoF, interfaceDoF0, interfaceDoF1),
+		 * The defect is: f(constrainingDoF, interfaceDoF0, interfaceDoF1),
 		 * where f is any inter-/extrapolating function that is suited to calculate the value
 		 * for the constrainedDoF from the values of the constraining DoF and the two interface
 		 * DoFs. Of course, f should be differentiable.
@@ -289,28 +271,46 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		 *
 		 * @param dd		defect derivs at constrained vertex (in the same order as input variables);
 		 * 					this is the output
-		 * @param u			solution at constrained vertex (must always be -1)
 		 * @param u_c		solution at corresponding constrainer vertex
 		 * @param u_itf0	solution at interface vertex on constraining side
 		 * @param u_itf1	solution at interface vertex on constrained side
 		 */
-		virtual void constrainedDefectDerivs
-		(	typename vector_type::value_type dd[4],
-			const typename vector_type::value_type& u,
+		virtual void constraintValueDerivs
+		(	typename vector_type::value_type dd[3],
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
 		) = 0;
 
-	private:
-		/// for every constrained vertex: finds the corresponding constrainer
-		void fill_constrainer_map();
+	public:
+		/// struct containing information about the dependencies of a constrained index
+		struct ConstraintInfo
+		{
+			public:
 
-		/*
-		/// for every constrained vertex: collects the vertices in the constraining set
-		/// whose defect will be influenced by the constrained one
-		void fill_defect_influence_map();
-		 */
+			/// default constructor
+			ConstraintInfo()
+				: constrgInd(0), fct(0), side(0) {};
+
+			/// custom constructor
+			ConstraintInfo(size_t _constrgInd, size_t _fct, size_t _side)
+				: constrgInd(_constrgInd), fct(_fct), side(_side) {};
+
+			/// the constraining index
+			size_t constrgInd;
+
+			/// the function this constrained index belongs to (relative to fcts given to this class)
+			size_t fct;
+
+			/// which side of the interface the constrained index belongs to
+			/// (0 for high-dim side, 1 for 1d side)
+			size_t side;
+		};
+
+	private:
+		/// for every constrained vertex: finds the corresponding constrainer and
+		/// fills the constrainer map with the pair of corresponding indices
+		void fill_constraint_map();
 
 	protected:
 		/// constrained functions
@@ -334,11 +334,11 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/// algebraic indices for the interface nodes (and all functions)
 		std::vector<size_t> m_algInd[2];
 
-		/// mapping each constrained vertex to its constrainer
-		std::map<Vertex*, Vertex*> m_constrainerMap;
+		/// solution values at the interface nodes (for all functions)
+		std::vector<number> m_intf_val[2];
 
-		/// mapping each constrained vertex to the collection of vertices whose defect it will affect
-		std::map<Vertex*, std::vector<Vertex*> > m_defectInfluenceMap;
+		/// algebraic indices of constrained nodes and their respective constrainers
+		std::map<size_t, ConstraintInfo> m_constraintMap;
 };
 
 
@@ -360,19 +360,17 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 		// inherited from IInterface1DFV1
 
-		/// \copydoc IInterface1DFV1::constrainedDefect()
-		virtual void constrainedDefect
+		/// \copydoc IInterface1DFV1::constraintValue()
+		virtual void constraintValue
 		(	typename vector_type::value_type& d,
-			const typename vector_type::value_type& u,
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
 		);
 
-		/// \copydoc IInterface1DFV1::constrainedDefectDerivs()
-		virtual void constrainedDefectDerivs
-		(	typename vector_type::value_type dd[4],
-			const typename vector_type::value_type& u,
+		/// \copydoc IInterface1DFV1::constraintValueDerivs()
+		virtual void constraintValueDerivs
+		(	typename vector_type::value_type dd[3],
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
@@ -398,19 +396,17 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 		// inherited from IInterface1DFV1
 
-		/// \copydoc IInterface1DFV1::constrainedDefect()
-		virtual void constrainedDefect
+		/// \copydoc IInterface1DFV1::constraintValue()
+		virtual void constraintValue
 		(	typename vector_type::value_type& d,
-			const typename vector_type::value_type& u,
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
 		);
 
-		/// \copydoc IInterface1DFV1::constrainedDefectDerivs()
-		virtual void constrainedDefectDerivs
-		(	typename vector_type::value_type dd[4],
-			const typename vector_type::value_type& u,
+		/// \copydoc IInterface1DFV1::constraintValueDerivs()
+		virtual void constraintValueDerivs
+		(	typename vector_type::value_type dd[3],
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
