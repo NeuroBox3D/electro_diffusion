@@ -157,7 +157,7 @@ class PNP_1D: public IElemDisc<TDomain>
 
 		///	virtual prepare one elements for assembling
 		template <typename TElem, typename TFVGeom>
-		void prep_elem(const LocalVector& u, GridObject* elem, const MathVector<worldDim> vCornerCoords[]);
+		void prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, const MathVector<worldDim> vCornerCoords[]);
 
 		///	virtual postprocesses the loop over all elements of one type
 		template <typename TElem, typename TFVGeom>

@@ -253,7 +253,7 @@ void PNP_1D<TDomain>::prep_elem_loop(const ReferenceObjectID roid, const int si)
 //	prepares one element for assembling
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
-void PNP_1D<TDomain>::prep_elem(const LocalVector& u, GridObject* elem, const MathVector<worldDim> vCornerCoords[])
+void PNP_1D<TDomain>::prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, const MathVector<worldDim> vCornerCoords[])
 {
 	// update geometry for this element
 	static TFVGeom& geo = GeomProvider<TFVGeom>::get();
