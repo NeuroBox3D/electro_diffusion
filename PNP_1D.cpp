@@ -159,8 +159,8 @@ void PNP_1D<TDomain>::set_diffusion_constants(const std::vector<number>& vDiff)
 template <typename TDomain>
 void PNP_1D<TDomain>::set_permettivities(const number eps_dend, const number eps_mem)
 {
-	// make sure, all entries are 0.0
-	m_permittivity_dend *= 0.0;
+	// make sure all entries are 0.0
+	m_permittivity_dend = 0.0;
 
 	// create isotrope diagonal matrix
 	for (size_t j = 0; j < worldDim; j++)
@@ -334,7 +334,7 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 								   + m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
-		number scvfArea = PI * radiusAtIP * radiusAtIP;
+		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
 
 	// potential
 		// to compute eps \nabla phi
@@ -357,8 +357,6 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		// add to local defect
 		d(_PHI_, scvf.from()) -= flux;
 		d(_PHI_, scvf.to()  ) += flux;
-
-//std::cout << "potential div: " << flux << std::endl;
 
 	// ion concentrations
 		for (size_t i = 0; i < m_nIon; i++)
@@ -425,10 +423,10 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = 2*PI * radiusAtIP * scv.volume();
+		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
+		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 	// potential equation
 
@@ -490,10 +488,10 @@ void PNP_1D<TDomain>::add_def_M_elem(LocalVector& d, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = 2*PI * radiusAtIP * scv.volume();
+		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
+		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 		for (size_t i = 0; i < m_nIon; i++)
 		{
@@ -545,7 +543,7 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 								   + m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
-		number scvfArea = PI * radiusAtIP * radiusAtIP;
+		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
 
 		// compute grad(phi)
 		MathVector<worldDim> D_grad_phi, grad_phi;
@@ -651,10 +649,10 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = 2*PI * radiusAtIP * scv.volume();
+		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
+		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 	// potential equation
 		// E field over cylinder surface area
@@ -705,10 +703,10 @@ void PNP_1D<TDomain>::add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = 2*PI * radiusAtIP * scv.volume();
+		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = PI * radiusAtIP * radiusAtIP * scv.volume();
+		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 		for (size_t i = 0; i < m_nIon; i++)
 		{
