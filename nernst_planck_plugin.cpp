@@ -71,9 +71,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
 		string name = string("AdditiveInterface1DFV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*, const char*, const char*)>
-					  ("function(s)#high-dim constrained subset#one-dim constrained subset#"
-					   "high-dim interface node subset#one-dim extension subset")
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
+				("function(s)#constrained subset#high-dim interface node subset#"
+				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "AdditiveInterface1DFV1", tag);
 	}
@@ -84,11 +84,25 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
 		string name = string("MultiplicativeInterface1DFV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*, const char*, const char*)>
-					  ("function(s)#high-dim constrained subset#one-dim constrained subset#"
-					   "high-dim interface node subset#one-dim extension subset")
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
+				("function(s)#constrained subset#high-dim interface node subset#"
+				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);
+	}
+
+	// InterfaceMapper
+	{
+		typedef typename IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper T;
+		typedef ILocalToGlobalMapper<TAlgebra> TBase;
+		string name = string("Interface1DMapper").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(SmartPtr<IAssemble<TAlgebra> >)>
+				("SmartPtr to domainDisc")
+			.add_method("add_interface", &T::add_interface, "", "SmartPtr to class of IInterface1DFV1", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "Interface1DMapper", tag);
+
 	}
 
 	/*

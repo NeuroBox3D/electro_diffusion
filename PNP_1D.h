@@ -91,7 +91,7 @@ namespace nernst_planck{
 template <typename TDomain>
 class PNP_1D: public IElemDisc<TDomain>
 {
-	protected:
+        protected:
 		const number R;		// universal gas constant
 		const number T;		// temperature
 		const number F;		// Faraday constant

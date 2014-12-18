@@ -136,6 +136,49 @@ template <typename TDomain, typename TAlgebra>
 class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 {
 	public:
+		// nested class for mapping local "shadow" DoFs to global 1D interface DoF
+		class Interface1DMapper : public ILocalToGlobalMapper<TAlgebra>
+		{
+			public:
+				///	algebra type
+				typedef TAlgebra algebra_type;
+
+				///	type of algebra matrix
+				typedef typename algebra_type::matrix_type matrix_type;
+
+				///	type of algebra vector
+				typedef typename algebra_type::vector_type vector_type;
+
+				/// type of the interface
+				typedef IInterface1DFV1<TDomain,TAlgebra> interface_type;
+
+			public:
+				///	default constructor
+				Interface1DMapper(SmartPtr<IAssemble<TAlgebra> > ass);
+
+				///	destructor
+				virtual ~Interface1DMapper() {};
+
+				///	adds a local vector to the global one
+				virtual void add_local_vec_to_global(vector_type& vec, const LocalVector& lvec, ConstSmartPtr<DoFDistribution> dd);
+
+				///	adds a local matrix to the global one
+				virtual void add_local_mat_to_global(matrix_type& mat, const LocalMatrix& lmat, ConstSmartPtr<DoFDistribution> dd);
+
+				///	modifies local solution vector for adapted defect computation (we do not require this here)
+				virtual void modify_LocalSol(LocalVector& vecMod, const LocalVector& lvec, ConstSmartPtr<DoFDistribution> dd) {};
+
+				/// adds an interface to the mapper
+				void add_interface(SmartPtr<interface_type> intf);
+			private:
+				std::vector<SmartPtr<interface_type> > m_vspInterface;
+		};
+
+
+	// make private members accessible for mapper class (esp. for accessing index values)
+	friend class Interface1DMapper;
+
+	public:
 		/// own type
 		typedef IInterface1DFV1<TDomain, TAlgebra> this_type;
 
@@ -161,12 +204,12 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/**
 		 * @param fcts				the functions to which the interface applies
 		 * 							(must be defined on both sides of the interface!)
-		 * @param high_dim_subset	the name of the constrained subset on the high-dimensional side
-		 * @param one_dim_subset	the name of the constrained subset on the one-dimensional side
-		 * @param extension_subset	the name of the extension domain subset (1D side)
+		 * @param constrained		the name of the constrained subset
+		 * @param high_dim_intfNode	the name of the subset of the high-dim interface node
+		 * @param one_dim_intfNode	the name of the subset of the one-dim interface node
 		 */
-		IInterface1DFV1(const char* fcts, const char* high_dim_subset, const char* one_dim_subset,
-						const char* two_dim_intfNode, const char* extension_subset);
+		IInterface1DFV1(const char* fcts, const char* constrained,
+						const char* high_dim_intfNode, const char* one_dim_intfNode);
 
 		/// destructor
 		virtual ~IInterface1DFV1();
@@ -290,21 +333,17 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 
 			/// default constructor
 			ConstraintInfo()
-				: constrgInd(0), fct(0), side(0) {};
+				: constrgInd(0), fct(0){};
 
 			/// custom constructor
-			ConstraintInfo(size_t _constrgInd, size_t _fct, size_t _side)
-				: constrgInd(_constrgInd), fct(_fct), side(_side) {};
+			ConstraintInfo(size_t _constrgInd, size_t _fct)
+				: constrgInd(_constrgInd), fct(_fct) {};
 
 			/// the constraining index
 			size_t constrgInd;
 
 			/// the function this constrained index belongs to (relative to fcts given to this class)
 			size_t fct;
-
-			/// which side of the interface the constrained index belongs to
-			/// (0 for high-dim side, 1 for 1d side)
-			size_t side;
 		};
 
 	private:
@@ -316,25 +355,38 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		/// constrained functions
 		std::vector<size_t> m_vFct;
 		std::vector<std::string> m_vsFct;
+		std::map<size_t, size_t> m_fctIndexMapper;
 
+		/*
 		/// subset index of extension domain
 		int m_ssiExt;
 		std::string m_sssiExt;
+		*/
 
+		/*
 		/// subset index of 2d interface node
 		int m_ssiIN;
 		std::string m_sssiIN;
+		*/
 
 		/// subset indices of constrained vertices
-		// m_ssi[0] MUST contain the ssi of the constrained vertices for the high-dim. end;
-		// m_ssi[1] the ssi of the constrained vertex for the 1d end
-		int m_ssi[2];
-		std::string m_sssi[2];
+		int m_siConstr;
+		std::string m_ssiConstr;
+
+		// [0] MUST contain the subset index of the interface node for the high-dim. end;
+		// [1] the subset index of the interface node for the 1d end
+		/// subset indices of interface nodes
+		int m_siIntf[2];
+		std::string m_ssiIntf[2];
 
 		/// algebraic indices for the interface nodes (and all functions)
+		// [0] MUST contain the index of the interface node for the high-dim. end;
+		// [1] the index of the interface node for the 1d end
 		std::vector<size_t> m_algInd[2];
 
 		/// solution values at the interface nodes (for all functions)
+		// [0] MUST contain the values at the interface node for the high-dim. end;
+		// [1] the values at the interface node for the 1d end
 		std::vector<number> m_intf_val[2];
 
 		/// algebraic indices of constrained nodes and their respective constrainers
@@ -351,9 +403,8 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		AdditiveInterface1DFV1(const char* fcts, const char* high_dim_subset,
-							   const char* one_dim_subset, const char* one_dim_intfNode,
-							   const char* extension_subset);
+		AdditiveInterface1DFV1(const char* fcts, const char* constrained,
+							   const char* high_dim_intfNode, const char* one_dim_intfNode);
 
 		/// destructor
 		virtual ~AdditiveInterface1DFV1() {};
@@ -387,9 +438,8 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		MultiplicativeInterface1DFV1(const char* fcts, const char* high_dim_subset,
-				   const char* two_dim_subset, const char* one_dim_intfNode,
-				   const char* extension_subset);
+		MultiplicativeInterface1DFV1(const char* fcts, const char* constrained,
+									 const char* high_dim_intfNode, const char* one_dim_intfNode);
 
 		/// destructor
 		virtual ~MultiplicativeInterface1DFV1() {};

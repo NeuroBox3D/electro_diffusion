@@ -222,33 +222,7 @@ bool PNP_1D<TDomain>::use_hanging() const
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void PNP_1D<TDomain>::prep_elem_loop(const ReferenceObjectID roid, const int si)
-{
-	/*
-	// set local positions
-	if (!TFVGeom::usesHangingNodes)
-	{
-
-		static const int refDim = TElem::dim;
-		TFVGeom& geo = GeomProvider<TFVGeom>::get();
-		const MathVector<refDim>* vSCVFip = geo.scvf_local_ips();
-		const size_t numSCVFip = geo.num_scvf_ips();
-		const MathVector<refDim>* vSCVip = geo.scv_local_ips();
-		const size_t numSCVip = geo.num_scv_ips();
-		m_vimDiffusion.template 		set_local_ips<refDim>(vSCVFip,numSCVFip, false);
-		m_imVelocity.template 		set_local_ips<refDim>(vSCVFip,numSCVFip, false);
-		m_imFlux.template 			set_local_ips<refDim>(vSCVFip,numSCVFip, false);
-		m_imSource.template 		set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imVectorSource.template 	set_local_ips<refDim>(vSCVFip,numSCVFip, false);
-		m_imReactionRate.template 	set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imReaction.template 		set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imReactionRateExpl.template set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imReactionExpl.template 	set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imSourceExpl.template 	set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imMassScale.template 		set_local_ips<refDim>(vSCVip,numSCVip, false);
-		m_imMass.template 			set_local_ips<refDim>(vSCVip,numSCVip, false);
-	}
-	*/
-}
+{}
 
 //	prepares one element for assembling
 template<typename TDomain>
@@ -260,48 +234,6 @@ void PNP_1D<TDomain>::prep_elem(const LocalVector& u, GridObject* elem, const Re
 
 	try {geo.update(elem, vCornerCoords, &(this->subset_handler()));}
 	UG_CATCH_THROW("PNP_1D::prep_elem: Cannot update finite volume geometry.");
-
-	/*
-	// set local positions
-	if (TFVGeom::usesHangingNodes)
-	{
-		const int refDim = TElem::dim;
-		const MathVector<refDim>* vSCVFip = geo.scvf_local_ips();
-		const size_t numSCVFip = geo.num_scvf_ips();
-		const MathVector<refDim>* vSCVip = geo.scv_local_ips();
-		const size_t numSCVip = geo.num_scv_ips();
-		m_vimDiffusion.template 		set_local_ips<refDim>(vSCVFip,numSCVFip);
-		m_imVelocity.template 		set_local_ips<refDim>(vSCVFip,numSCVFip);
-		m_imFlux.template 			set_local_ips<refDim>(vSCVFip,numSCVFip);
-		m_imSource.template 		set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imVectorSource.template 	set_local_ips<refDim>(vSCVFip,numSCVFip);
-		m_imReactionRate.template 	set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imReaction.template 		set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imReactionRateExpl.template 	set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imReactionExpl.template 	set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imSourceExpl.template		set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imMassScale.template 		set_local_ips<refDim>(vSCVip,numSCVip);
-		m_imMass.template 			set_local_ips<refDim>(vSCVip,numSCVip);
-	}
-
-	//	set global positions
-	const MathVector<dim>* vSCVFip = geo.scvf_global_ips();
-	const size_t numSCVFip = geo.num_scvf_ips();
-	const MathVector<dim>* vSCVip = geo.scv_global_ips();
-	const size_t numSCVip = geo.num_scv_ips();
-	m_vimDiffusion.			set_global_ips(vSCVFip, numSCVFip);
-	m_imVelocity.			set_global_ips(vSCVFip, numSCVFip);
-	m_imFlux.				set_global_ips(vSCVFip, numSCVFip);
-	m_imSource.				set_global_ips(vSCVip, numSCVip);
-	m_imVectorSource.		set_global_ips(vSCVFip, numSCVFip);
-	m_imReactionRate.		set_global_ips(vSCVip, numSCVip);
-	m_imReactionRateExpl.	set_global_ips(vSCVip, numSCVip);
-	m_imReactionExpl.		set_global_ips(vSCVip, numSCVip);
-	m_imSourceExpl.			set_global_ips(vSCVip, numSCVip);
-	m_imReaction.			set_global_ips(vSCVip, numSCVip);
-	m_imMassScale.			set_global_ips(vSCVip, numSCVip);
-	m_imMass.				set_global_ips(vSCVip, numSCVip);
-	*/
 }
 
 //	postprocesses the loop over all elements of one type
@@ -330,8 +262,8 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		const typename TFVGeom::SCVF& scvf = fvgeom.scvf(s);
 
 		// get radius as mean value of the neighbouring vertex radii
-		number radiusAtIP = 0.5 * (  m_aaRadius[pElem->vertex(scvf.from())]
-								   + m_aaRadius[pElem->vertex(scvf.to())]);
+		number radiusAtIP = std::min(  m_aaRadius[pElem->vertex(scvf.from())],
+                                       m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
 		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
@@ -539,8 +471,8 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 		const typename TFVGeom::SCVF& scvf = fvgeom.scvf(s);
 
 		// get radius as mean value of the neighbouring vertex radii
-		number radiusAtIP = 0.5 * (  m_aaRadius[pElem->vertex(scvf.from())]
-								   + m_aaRadius[pElem->vertex(scvf.to())]);
+		number radiusAtIP = std::min(   m_aaRadius[pElem->vertex(scvf.from())],
+                                        m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
 		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
