@@ -150,7 +150,7 @@ void PNP_1D<TDomain>::set_diffusion_constants(const std::vector<number>& vDiff)
 		m_vDiffusionTensor[i] *= 0.0;
 
 		// create isotrope diagonal matrix
-		for (size_t j = 0; j < worldDim; j++)
+		for (int j = 0; j < worldDim; j++)
 			m_vDiffusionTensor[i](j,j) = vDiff[i];
 	}
 }
@@ -163,7 +163,7 @@ void PNP_1D<TDomain>::set_permettivities(const number eps_dend, const number eps
 	m_permittivity_dend = 0.0;
 
 	// create isotrope diagonal matrix
-	for (size_t j = 0; j < worldDim; j++)
+	for (int j = 0; j < worldDim; j++)
 	{
 		m_permittivity_dend(j,j) = eps_dend;
 	}

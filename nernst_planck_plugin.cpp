@@ -249,7 +249,7 @@ static void Common(Registry& reg, string grp)
 extern "C" void
 InitUGPlugin_nernst_planck(Registry* reg, string grp)
 {
-	grp.append("/CalciumDynamics");
+	grp.append("/nernst_planck");
 	typedef nernst_planck::Functionality Functionality;
 
 	try{
