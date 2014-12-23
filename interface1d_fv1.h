@@ -41,55 +41,64 @@ namespace nernst_planck{
  *
  *     --- o --- o
  *         |  /  |
- *     --- o --- O       O --- o ---
+ *     --- o --- I       I --- o ---
  *         |  /  |
  *     --- o --- o
  *
- * The two nodes marked by a capital O will be referred to as "interface" nodes/vertices.
+ * The two nodes marked by a capital I will be referred to as "interface" nodes/vertices.
  *
  * Then you have to introduce constrained nodes (x) on both sides that will simulate
- * the behaviour of a non-existing extension of the respective subdomain:
+ * the behavior of a non-existing extension of the respective subdomain:
  *
- *     --- o --- o  ---  x
- *         |  /  |       |
- *     --- o  -  O/x === x/O --- o ---
- *         |  /  |       |
- *     --- o --- o  ---  x
+ *     --- o --- o --- x
+ *         |  /  |     |
+ *     --- o  -  I --- I --- o ---
+ *         |  /  |     |
+ *     --- o --- o --- x
  *
- * There are two vertices located at the same coordinates in the location of the
- * interface nodes. One is the interface vertex, the other is a constrained vertex
- * connected to the other interface vertex.
- * Each constrained vertex is connected to exactly one non-constrained vertex, which
- * is referred to as its "constrainer" or "constraining vertex".
- * The two subdomains remain disconnected!
+ * Each constrained vertex is connected to exactly one unconstrained ("normal") vertex
+ * in the high-dimensional subdomain which is referred to as its "constrainer" or
+ * "constraining vertex".
  *
- * The constrained vertices on the high-dimensional side, in conjunction with their
- * respective constrainers, form new high-dimensional elements (quadrilaterals in 2D,
- * prisms or hexahedra in 3D). A discretization on the high-dimensional side with
- * an equivalent on the 1D side that is to be coupled by means of this interface
- * will have to be extended to those new elements.
- * This holds for the 1D side analogously.
+ * The constrained verticese, in conjunction with their respective constrainers,
+ * form new high-dimensional elements (quadrilaterals in 2D, prisms or hexahedra in 3D).
+ * A discretization on the high-dimensional side with an equivalent on the 1D side that
+ * is to be coupled by means of this interface will have to be extended to those new elements.
+ *
+ * A practical point: As, for the time being, there is no handling of lower-dimensional
+ * elements not part of a full-dimensional one in the process of distributing the geometry
+ * when simulating in parallel, the one-dimensional elements will typically be extended to
+ * form full-dimensional elements by some nodes of a subset "useless" which will then be
+ * set to an arbitrary value using a constraint (e.g. Dirichlet boundary), like this:
+ *
+ *	   --- o --- o --- x  u --- u --- u ---
+ *         |  /  |     | /    /	    /
+ *     --- o  -  I --- I --- o --- o ---
+ *         |  /  |     |
+ *     --- o --- o --- x
  *
  * Subsets:
  * ---------
- * The constrained manifold (at least the vertices) of the high-dimensional side
- * must be (exclusively) assigned to a subset that needs to be specified in the
- * interface constructor. The same is necessary for the (single) 1D constrained
- * vertex.
+ * The constrained manifold (vertices and edges (and faces in 3D)) of the high-dimensional
+ * side must be (exclusively) assigned to a subset that needs to be specified in the
+ * interface constructor. The same is necessary for the interface node on both sides of
+ * the interface which both need their own subset.
  *
  * -------------
  * How it works
  * -------------
+ *
+ * (1)
  * The coupling is realized by constraints (this is why this base class is derived
  * from IDomainConstraint). As the respective discretizations on both sides of the
  * interface which are to be coupled are extended to the respective new elements
- * nothing has to be assembled. The one thing that has to be done is assigning
- * meaningful values to the constrained vertices.
+ * nothing has to be assembled. What has to be done is assigning meaningful values
+ * to the constrained vertices.
  *
  * The constraint takes the general form:   u* = f(u,u1,u2)
  * where u* is the value of a function at a constrained vertex, u the respective
- * value at its constrainer, u1 is the value on the constraining side, u2 that on
- * the constrained one.
+ * value at its constrainer, u1 is the value on the full-D interface node,
+ * u2 the value on the 1D interface node.
  *
  * The constraint function f is problem-specific and needs to be carefully chosen.
  * In order to define such a function, you will have to derive your own interface
@@ -102,7 +111,7 @@ namespace nernst_planck{
  * \f[
  *      f(u,u_1,u_2);
  * \f]
- * constraintValueDerivs must calculate the partial derivations wrt
+ * constraintValueDerivs must calculate the partial derivatives wrt.
  * \f$ u \f$, \f$ u_1 \f$, \f$ u_2 \f$ thereof.
  * Cf. documentation of the virtual methods.
  *
@@ -117,12 +126,28 @@ namespace nernst_planck{
  * \f]
  * respectively.
  *
+ * (2)
+ * The Interface base class implements a nested class Interface1DMapper.
+ * In order for the interface to work properly, an instance of this class will have
+ * to be created in the lua script via "interfaceMapper = Interface1DMapper(domainDisc)"
+ * and all the interfaces of the simulation need to be passed to it using its method
+ * add_interface().
+ * This will make sure the local assemblings in the constrained nodes will be added
+ * to the Jacobian and defect components of the 1D interface node. This is necessary for
+ * conservation of the flowing quantity.
  *
- * \note At the moment, if you want to use parallel GMG with a gathered base solver
- * with this implementation, you have to set gmg:set_rap(true); otherwise you will
- * experience MPI failures, since the gathering process will try to communicate
- * with all others in order to assemble the constraints given here, whereas the
- * other processes will not reach this point of communication.
+ * (3)
+ * The interface must not be divided by parallel distribution!
+ * In order to make sure this does not happen, you will have to do two things:
+ *
+ *   (a) Use "metisReweigh" as distribution method and use ProtectSubsetPartitionWeighting
+ *   	 as weighting function. Set high weights on the constrained subset as well as the
+ *   	 two interface node subsets.
+ *   (b) For this to work, there needs to be a proper full-D element connecting the full-D
+ *   	 subdomain with the 1D subdomain. This can be achieved by creating an element that
+ *   	 consists of the two interface nodes and the nearest node of the "useless" subset
+ *   	 (see graphical representation above).
+ *
  *
  * \tparam	TDomain				type of Domain
  * \tparam	TAlgebra			type of Algebra
