@@ -19,7 +19,7 @@
 namespace ug{
 namespace nernst_planck{
 
-/// \addtogroup nernst_planck
+/// \addtogroup plugin_nernst_planck
 /// \{
 
 /// 1D PNP element disccretization
