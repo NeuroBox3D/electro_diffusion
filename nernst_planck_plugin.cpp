@@ -11,7 +11,7 @@
 #include "nernst_planck_util.h"
 #include "PNP_1D.h"
 #include "interface1d_fv1.h"
-//#include "constrained_ilu.h"
+#include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
 
 using namespace std;
@@ -103,6 +103,18 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "Interface1DMapper", tag);
 
+	}
+
+	// constraint for useless DoFs
+	{
+		typedef CopyNeighborValueConstraint<TDomain, TAlgebra> T;
+		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
+		string name = string("CopyNeighborValueConstraint").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(const char*, const char*)>
+				("function(s)#constrained subset")
+				.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
 	}
 
 	/*
