@@ -47,8 +47,10 @@ void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_local_vec_to_glo
 					// get index for corresponding 1D interface node
 					if (m_vspInterface[intf]->m_fctIndexMapper.find(fct)
 						==  m_vspInterface[intf]->m_fctIndexMapper.end())
-						UG_THROW("Function for constrained index is unknown in interface.")
-
+					{
+						UG_THROW("Function " << fct << " for constrained index " << index
+								 << " is unknown in interface " << intf << ".\n");
+					}
 					size_t fctIndInIntf = m_vspInterface[intf]->m_fctIndexMapper[fct];
 					size_t intf_dofInd = m_vspInterface[intf]->m_algInd[1][fctIndInIntf];
 

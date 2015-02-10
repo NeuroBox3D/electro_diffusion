@@ -19,7 +19,6 @@ set(SOURCES nernst_planck_plugin.cpp
             electric_circuit.cpp
    )
 
-message(STATUS "-------------------information regarding calciumDynamics-------------------")
 
 
 # store libs to be linked against here
@@ -34,5 +33,3 @@ else(buildEmbeddedPlugins)
 	add_library(nernst_planck SHARED ${SOURCES})
 	target_link_libraries(nernst_planck ug4 ${linkLibraries})
 endif(buildEmbeddedPlugins)
-
-message(STATUS "---------------------------------------------------------------------------") 
