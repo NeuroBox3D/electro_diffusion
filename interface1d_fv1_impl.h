@@ -281,8 +281,6 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 	}
 
 // find algebra indices for interface nodes
-	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
-
 	Vertex* iv1 = NULL;	// high-dim interface node
 	Vertex* iv2 = NULL;	// one-dim interface node
 	DoFDistribution::traits<Vertex>::const_iterator iter;
