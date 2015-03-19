@@ -13,6 +13,7 @@
 #include "interface1d_fv1.h"
 #include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
+#include "constrained_ilu.h"
 
 using namespace std;
 using namespace ug::bridge;
@@ -117,7 +118,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
 	}
 
-	/*
 	//	ILUC preconditioner (no longer needed)
 	{
 		typedef ILUC<TDomain, TAlgebra> T;
@@ -131,7 +131,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ILUC", tag);
 	}
-	*/
 }
 
 /**

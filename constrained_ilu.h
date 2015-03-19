@@ -459,7 +459,7 @@ class ILUC : public IPreconditioner<TAlgebra>
 			{
 				if (m_spDD.valid())
 					for (size_t i = 0; i < m_vConstraint.size(); i++)
-						m_vConstraint[i]->adjust_solution_linear(c, m_spDD, pOp, m_time);
+						m_vConstraint[i]->adjust_solution(c, m_spDD, m_time);
 				else
 					UG_THROW("DoF distribution is not valid.")
 			} UG_CATCH_THROW(" Cannot adjust solution.");
@@ -477,7 +477,7 @@ class ILUC : public IPreconditioner<TAlgebra>
 		void set_time(number time) {m_time = time;};
 
 	/// adding a constraint
-		void add_constraint(SmartPtr<IInterface1DFV1<TDomain, TAlgebra> > constraint) {m_vConstraint.push_back(constraint);}
+		void add_constraint(SmartPtr<IDomainConstraint<TDomain, TAlgebra> > constraint) {m_vConstraint.push_back(constraint);}
 
 	protected:
 	///	storage for factorization
@@ -495,7 +495,7 @@ class ILUC : public IPreconditioner<TAlgebra>
 		bool m_bSort;
 
 	/// constraint members
-		std::vector<SmartPtr<IInterface1DFV1<TDomain, TAlgebra> > > m_vConstraint;
+		std::vector<SmartPtr<IDomainConstraint<TDomain, TAlgebra> > > m_vConstraint;
 		ConstSmartPtr<DoFDistribution> m_spDD;
 		number m_time;
 };
