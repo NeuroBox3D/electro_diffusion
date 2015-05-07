@@ -428,8 +428,16 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		AdditiveInterface1DFV1(const char* fcts, const char* constrained,
-							   const char* high_dim_intfNode, const char* one_dim_intfNode);
+		AdditiveInterface1DFV1
+		(
+			const char* fcts,
+			const char* constrained,
+			const char* high_dim_intfNode,
+			const char* one_dim_intfNode
+		)
+	 	: IInterface1DFV1<TDomain, TAlgebra>
+		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
+		{}
 
 		/// destructor
 		virtual ~AdditiveInterface1DFV1() {};
@@ -442,7 +450,10 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
-		);
+		)
+		{
+			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
+		}
 
 		/// \copydoc IInterface1DFV1::constraintValueDerivs()
 		virtual void constraintValueDerivs
@@ -450,7 +461,76 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
-		);
+		)
+		{
+			Proxy<typename vector_type::value_type>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
+		}
+
+
+		// The following proxy implementation is used to distinguish the cases:
+		// vector_type::value_type = number (CPU1)
+		// vector_type::value_type = ...	(other CPUs)
+		// As the standard explicitly forbids the specialization of templated class methods
+		// in a not fully specialized template class, it is not possible to use
+		// template <typename TValueType> virtual void constraintValue(...)
+		// and specialize it for TValueType=number.
+		// However, it is allowed to _partially_ specialize template classes, this
+		// is where the proxy comes in.
+	private:
+		// _partial_ specialization is allowed (for that: existence of dummy)
+		template <typename TValue, typename DUMMY = void>
+		struct Proxy
+		{
+			static void constraintValue
+			(
+				TValue& d,
+				const TValue& u_c,
+				const TValue& u_itf0,
+				const TValue& u_itf1
+			)
+			{
+				UG_THROW("This class is not implemented for a different algebra type than CPU1.");
+			}
+
+			static void constraintValueDerivs
+			(
+				TValue dd[3],
+				const TValue& u_c,
+				const TValue& u_itf0,
+				const TValue& u_itf1
+			)
+			{
+				UG_THROW("This class is not implemented for a different algebra type than CPU1.");
+			}
+		};
+
+		template <typename DUMMY>
+		struct Proxy<number, DUMMY>
+		{
+			static void constraintValue
+			(
+				number& d,
+				const number& u_c,
+				const number& u_itf0,
+				const number& u_itf1
+			)
+			{
+				d = u_c + (u_itf1 - u_itf0);
+			}
+
+			static void constraintValueDerivs
+			(
+				number dd[3],
+				const number& u_c,
+				const number& u_itf0,
+				const number& u_itf1
+			)
+			{
+				dd[0] =  1.0;
+				dd[1] = -1.0;
+				dd[2] =  1.0;
+			}
+		};
 };
 
 
@@ -463,8 +543,16 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		MultiplicativeInterface1DFV1(const char* fcts, const char* constrained,
-									 const char* high_dim_intfNode, const char* one_dim_intfNode);
+		MultiplicativeInterface1DFV1
+		(
+			const char* fcts,
+			const char* constrained,
+			const char* high_dim_intfNode,
+			const char* one_dim_intfNode
+		)
+		: IInterface1DFV1<TDomain, TAlgebra>
+		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
+		{};
 
 		/// destructor
 		virtual ~MultiplicativeInterface1DFV1() {};
@@ -473,19 +561,98 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 		/// \copydoc IInterface1DFV1::constraintValue()
 		virtual void constraintValue
-		(	typename vector_type::value_type& d,
+		(
+			typename vector_type::value_type& d,
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
-		);
+		)
+		{
+			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
+		}
 
 		/// \copydoc IInterface1DFV1::constraintValueDerivs()
 		virtual void constraintValueDerivs
-		(	typename vector_type::value_type dd[3],
+		(
+			typename vector_type::value_type dd[3],
 			const typename vector_type::value_type& u_c,
 			const typename vector_type::value_type& u_itf0,
 			const typename vector_type::value_type& u_itf1
-		);
+		)
+		{
+			Proxy<typename vector_type::value_type>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
+		}
+
+		// The following proxy implementation is used to distinguish the cases:
+		// vector_type::value_type = number (CPU1)
+		// vector_type::value_type = ...	(other CPUs)
+		// As the standard explicitly forbids the specialization of templated class methods
+		// in a not fully specialized template class, it is not possible to use
+		// template <typename TValueType> virtual void constraintValue(...)
+		// and specialize it for TValueType=number.
+		// However, it is allowed to _partially_ specialize template classes, this
+		// is where the proxy comes in.
+	private:
+		// _partial_ specialization is allowed (for that: existence of dummy)
+		template <typename TValue, typename DUMMY = void>
+		struct Proxy
+		{
+			static void constraintValue
+			(
+				TValue& d,
+				const TValue& u_c,
+				const TValue& u_itf0,
+				const TValue& u_itf1
+			)
+			{
+				UG_THROW("This class is not implemented for a different algebra type than CPU1.");
+			}
+
+			static void constraintValueDerivs
+			(
+				TValue dd[3],
+				const TValue& u_c,
+				const TValue& u_itf0,
+				const TValue& u_itf1
+			)
+			{
+				UG_THROW("This class is not implemented for a different algebra type than CPU1.");
+			}
+		};
+
+		template <typename DUMMY>
+		struct Proxy<number, DUMMY>
+		{
+			static void constraintValue
+			(
+				number& d,
+				const number& u_c,
+				const number& u_itf0,
+				const number& u_itf1
+			)
+			{
+				if (std::fabs(u_itf0) < 2 * std::numeric_limits<number>::denorm_min())
+					{UG_THROW("Denominator practically zero (" << u_itf0 << ").");}
+
+				d = u_c * (u_itf1 / u_itf0);
+			}
+
+			static void constraintValueDerivs
+			(
+				number dd[3],
+				const number& u_c,
+				const number& u_itf0,
+				const number& u_itf1
+			)
+			{
+				if (std::fabs(u_itf0) < 2 * std::numeric_limits<typename vector_type::value_type>::denorm_min())
+					{UG_THROW("Denominator practically zero.");}
+
+				dd[0] =  u_itf1 / u_itf0;
+				dd[1] = -u_c * u_itf1 / (u_itf0*u_itf0);
+				dd[2] =  u_c / u_itf0;
+			}
+		};
 };
 
 } // namespace nernst_planck
