@@ -14,6 +14,7 @@
 #include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
 #include "constrained_ilu.h"
+#include "vtk_export_ho.h"
 
 using namespace std;
 using namespace ug::bridge;
@@ -118,7 +119,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
 	}
 
-	//	ILUC preconditioner (no longer needed)
+	// ILUC preconditioner
 	{
 		typedef ILUC<TDomain, TAlgebra> T;
 		typedef IPreconditioner<TAlgebra> TBase;
@@ -130,6 +131,13 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("add_constraint", &T::add_constraint, "", "constraint")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ILUC", tag);
+	}
+
+	// vtk export for higher order grid functions
+	{
+		reg.add_function("vtk_export_ho", &vtk_export_ho<GridFunction<TDomain, TAlgebra> >,
+			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
+			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
 }
 
