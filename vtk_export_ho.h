@@ -14,10 +14,6 @@ namespace ug {
 namespace nernst_planck {
 
 
-/** Make sure that aNewVrt is attached to srcMesh->grid() and contains a
- * pointer to a valid vertex in destMesh for each selected vertex in srcMesh.
- * Also make sure that all vertices belonging to a selected element have been
- * selected, too.*/
 template <typename TDomain, class TElem>
 inline void CopySelectedElements
 (
@@ -47,7 +43,9 @@ inline void CopySelectedElements
 		for (size_t iv = 0; iv < e->num_vertices(); ++iv)
 			vrts.set_vertex(iv, aaNewVrt[e->vertex(iv)]);
 
-		TElem* ne = *destGrid.create_by_cloning(e, vrts);
+		TElem* ne;
+		try {ne = *destGrid.create_by_cloning(e, vrts);}
+		UG_CATCH_THROW("New element could not be created.");
 		destSH->assign_subset(ne, srcSH->get_subset_index(e));
 	}
 }
@@ -89,7 +87,9 @@ inline void CopySelected
 	for (VertexIterator viter = sel.begin<Vertex>(); viter != sel.end<Vertex>(); ++viter)
 	{
 		Vertex* v = *viter;
-		Vertex* nv = *destGrid.create_by_cloning(v);
+		Vertex* nv;
+		try {nv = *destGrid.create_by_cloning(v);}
+		UG_CATCH_THROW("New vertex could not be created.");
 		aaNewVrt[v] = nv;
 		aaPosDest[nv] = aaPosSrc[v];
 		destSH->assign_subset(nv, srcSH->get_subset_index(v));
@@ -103,9 +103,69 @@ inline void CopySelected
 }
 
 
+template <typename TElem, typename TGridFunction>
+inline void interpolate_from_original_fct
+(
+	SmartPtr<TGridFunction> u_new,
+	const GlobalGridFunctionNumberData<TGridFunction>& u_orig,
+	size_t fct,
+	const LFEID& lfeid
+)
+{
+	typedef typename TGridFunction::domain_type dom_type;
+	static const int dim = dom_type::dim;
+	typedef typename DoFDistribution::traits<TElem>::const_iterator const_iter_type;
 
+	const_iter_type elem_iter = u_new->template begin<TElem>();
+	const_iter_type iterEnd = u_new->template end<TElem>();
+
+	std::vector<DoFIndex> ind;
+	for (; elem_iter != iterEnd; ++elem_iter)
+	{
+		u_new->inner_dof_indices(*elem_iter, fct, ind);
+
+		// get dof positions
+		std::vector<MathVector<dim> > globPos;
+		InnerDoFPosition<dom_type>(globPos, *elem_iter, *u_new->domain(), lfeid);
+
+		UG_ASSERT(globPos.size() == ind.size(), "#DoF mismatch");
+
+		// write values in new grid function
+		for (size_t dof = 0; dof < ind.size(); ++dof)
+		{
+			if (!u_orig.evaluate(DoFRef(*u_new, ind[dof]), globPos[dof]))
+			{
+				DoFRef(*u_new, ind[dof]) = std::numeric_limits<number>::quiet_NaN();
+				//UG_THROW("Interpolation onto new grid did not succeed.\n"
+				//		 "DoF with coords " << globPos[dof] << " is out of range.");
+			}
+		}
+	}
+}
+
+
+/// export a solution from a high-order ansatz space to vtk file(s)
+/**
+ *  This function will create a temporary domain, copy all elements from the domain
+ *  which the grid function u is defined on to the temporary domain and then refine
+ *  the resulting grid until it has at least as many vertices as the original grid
+ *  functions has unknowns (e.g. a grid for a function of order 2 would be refined
+ *  once, a grid for a function of order 4 would be refined twice, and so on).
+ *  After refinement, a temporary grid function of order 1 (Lagrange) is defined on
+ *  the refined grid and its values interpolated from the original function u.
+ *  The temporary first-order grid function is then exported to vtk using the usual
+ *  mechanisms.
+ *
+ * @param u			original high-order grid function to be exported
+ * @param vFct		vector of function names (contained in grid function) to be exported
+ * @param order		order to be used
+ * @param vtkOutput	VTKOutput object to use for export of linearized function
+ * @param filename	file name to be used in export
+ *
+ * @todo The order parameter might be left out and determined automatically from the
+ * 		 grid function.
+ */
 template <typename TGridFunction>
-//SmartPtr<TGridFunction> vtk_export_ho
 void vtk_export_ho
 (
 	SmartPtr<TGridFunction> u,
@@ -118,7 +178,6 @@ void vtk_export_ho
 	typedef typename TGridFunction::domain_type dom_type;
 	typedef typename dom_type::position_attachment_type position_attachment_type;
 	typedef typename TGridFunction::approximation_space_type approx_space_type;
-	static const int dim = dom_type::dim;
 	typedef typename TGridFunction::element_type elem_type;
 
 	SmartPtr<approx_space_type> srcApproxSpace = u->approx_space();
@@ -130,10 +189,14 @@ void vtk_export_ho
 	srcSel.select(u->template begin<elem_type>(), u->template end<elem_type>());
 
 	// create new domain
-	SmartPtr<dom_type> destDom = make_sp(new dom_type());
+	dom_type* dom_ptr;
+	try	{dom_ptr = new dom_type();}
+	UG_CATCH_THROW("Temporary domain could not be created.");
+	SmartPtr<dom_type> destDom = make_sp(dom_ptr);
 
 	// copy grid from old domain to new domain
-	CopySelected(destDom, srcDom, srcSel);
+	try	{CopySelected(destDom, srcDom, srcSel);}
+	UG_CATCH_THROW("Temporary grid could not be created.");
 
 	// refine
 #ifdef UG_PARALLEL
@@ -144,14 +207,19 @@ void vtk_export_ho
 #endif
 	size_t numRefs = std::ceil(std::log2(order));
 	for (size_t iref = 0; iref < numRefs; ++iref)
-		refiner.refine();
+	{
+		try	{refiner.refine();}
+		UG_CATCH_THROW("Refinement step " << iref << " could not be carried out.");
+	}
 
 	// retain function group for functions being exported
 	FunctionGroup fg(srcApproxSpace->dof_distribution_info(), vFct);
 
 	// create approx space and add functions
-	SmartPtr<approx_space_type> destApproxSpace =
-		make_sp(new approx_space_type(destDom));
+	approx_space_type* approx_ptr;
+	try {approx_ptr = new approx_space_type(destDom);}
+	UG_CATCH_THROW("Temporary approximation space could not be created.");
+	SmartPtr<approx_space_type> destApproxSpace = make_sp(approx_ptr);
 
 	for (size_t fct = 0; fct < fg.size(); ++fct)
 	{
@@ -174,45 +242,29 @@ void vtk_export_ho
 	}
 	destApproxSpace->init_top_surface();
 
-	SmartPtr<TGridFunction> u_new = make_sp(new TGridFunction(destApproxSpace));
+	TGridFunction* gridFct_ptr;
+	try {gridFct_ptr = new TGridFunction(destApproxSpace);}
+	UG_CATCH_THROW("Temporary grid function could not be created.");
+	SmartPtr<TGridFunction> u_new = make_sp(gridFct_ptr);
 
 	// interpolate onto new grid
 	for (size_t fct = 0; fct < fg.size(); ++fct)
 	{
+		const LFEID lfeid = u_new->dof_distribution()->lfeid(fg[fct]);
+
 		GlobalGridFunctionNumberData<TGridFunction> ggfnd =
 			GlobalGridFunctionNumberData<TGridFunction>(u, fg.name(fct));
 
 		// iterate over DoFs in new function and evaluate
-		typedef typename DoFDistribution::dim_traits<dim>::grid_base_object elem_type;
-		typedef typename DoFDistribution::traits<elem_type>::const_iterator const_iter_type;
-
-		const_iter_type elem_iter = u_new->template begin<elem_type>();
-		const_iter_type iterEnd = u_new->template end<elem_type>();
-
-		// TODO: better not iterate over elements, but over vertices etc. like in Dirichlet bnd
-		std::vector<DoFIndex> ind;
-		for (; elem_iter != iterEnd; ++elem_iter)
-		{
-			u_new->dof_indices(*elem_iter, fct, ind);
-
-			// get dof positions
-			const LFEID lfeid = u_new->dof_distribution()->lfeid(fg[fct]);
-			std::vector<MathVector<dim> > globPos;
-			DoFPosition(globPos, *elem_iter, *destDom, lfeid);
-
-			UG_ASSERT(globPos.size() == ind.size(), "#DoF mismatch");
-
-			// write values in new grid function
-			for (size_t dof = 0; dof < ind.size(); ++dof)
-			{
-				if (!ggfnd.evaluate(DoFRef(*u_new, ind[dof]), globPos[dof]))
-				{
-					DoFRef(*u_new, ind[dof]) = std::numeric_limits<number>::quiet_NaN();
-					//UG_THROW("Interpolation onto new grid did not succeed.\n"
-					//		 "DoF with coords " << globPos[dof] << " is out of range.");
-				}
-			}
-		}
+		// should be vertices only for Lagrange-1
+		if (u_new->max_dofs(VERTEX))
+			interpolate_from_original_fct<Vertex, TGridFunction>(u_new, ggfnd, fct, lfeid);
+		if (u_new->max_dofs(EDGE))
+			interpolate_from_original_fct<Edge, TGridFunction>(u_new, ggfnd, fct, lfeid);
+		if (u_new->max_dofs(FACE))
+			interpolate_from_original_fct<Face, TGridFunction>(u_new, ggfnd, fct, lfeid);
+		if (u_new->max_dofs(VOLUME))
+			interpolate_from_original_fct<Volume, TGridFunction>(u_new, ggfnd, fct, lfeid);
 	}
 
 #ifdef UG_PARALLEL
