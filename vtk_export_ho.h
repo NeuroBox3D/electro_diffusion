@@ -179,7 +179,6 @@ void vtk_export_ho
 	// interpolate onto new grid
 	for (size_t fct = 0; fct < fg.size(); ++fct)
 	{
-		UG_LOG("fct: " << fct << "\n");
 		GlobalGridFunctionNumberData<TGridFunction> ggfnd =
 			GlobalGridFunctionNumberData<TGridFunction>(u, fg.name(fct));
 
@@ -212,8 +211,6 @@ void vtk_export_ho
 					//UG_THROW("Interpolation onto new grid did not succeed.\n"
 					//		 "DoF with coords " << globPos[dof] << " is out of range.");
 				}
-				if (fct == 4 && std::fabs(DoFRef(*u_new, ind[dof])) > 1.0)
-					UG_LOG("phi " << globPos[dof] << " = " << DoFRef(*u_new, ind[dof]) << "\n");
 			}
 		}
 	}
