@@ -205,7 +205,7 @@ void vtk_export_ho
 	MultiGrid& destGrid = *destDom->grid();
 	GlobalMultiGridRefiner refiner(destGrid);
 #endif
-	size_t numRefs = std::ceil(std::log2(order));
+	size_t numRefs = ceil(log2(order));
 	for (size_t iref = 0; iref < numRefs; ++iref)
 	{
 		try	{refiner.refine();}
