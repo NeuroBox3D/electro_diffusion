@@ -169,10 +169,12 @@ template <typename TGridFunction>
 void vtk_export_ho
 (
 	SmartPtr<TGridFunction> u,
-	std::vector<std::string> vFct,
+	const std::vector<std::string>& vFct,
 	size_t order,
 	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
-	const char* filename
+	const char* filename,
+	size_t step,
+	number time
 )
 {
 	typedef typename TGridFunction::domain_type dom_type;
@@ -274,8 +276,23 @@ void vtk_export_ho
 #endif
 
 	// return new grid function
-	vtkOutput->print(filename, *u_new);
+	vtkOutput->print(filename, *u_new, step, time);
 }
+
+
+template <typename TGridFunction>
+void vtk_export_ho
+(
+	SmartPtr<TGridFunction> u,
+	const std::vector<std::string>& vFct,
+	size_t order,
+	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
+	const char* filename
+	)
+{
+	vtk_export_ho(u, vFct, order, vtkOutput, filename, 0, 0.0);
+}
+
 
 } // end namespace ug
 } // end namespace nernst_planck

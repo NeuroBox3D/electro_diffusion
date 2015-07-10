@@ -51,8 +51,10 @@ static void DomainAlgebra(Registry& reg, string grp)
 	string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
 	string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
 
+	typedef GridFunction<TDomain, TAlgebra> TGridFunction;
+
 	// write residuals to file function for param optimization
-	reg.add_function("write_residuals_to_file", &writeResidualsToFile<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+	reg.add_function("write_residuals_to_file", &writeResidualsToFile<TGridFunction>, grp.c_str(),
 						 "", "solution#reference solution#outFileName",
 						 "writes residuals in every dof to file as required by Ivo's optimization routines "
 						 "and returns squared 2-norm of residual vector");
@@ -135,7 +137,16 @@ static void DomainAlgebra(Registry& reg, string grp)
 
 	// vtk export for higher order grid functions
 	{
-		reg.add_function("vtk_export_ho", &vtk_export_ho<GridFunction<TDomain, TAlgebra> >,
+		reg.add_function("vtk_export_ho",
+			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&,
+						size_t, SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*)>
+				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
+			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
+			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
+		reg.add_function("vtk_export_ho",
+			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
+						SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*, size_t, number)>
+				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
 			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
 			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
