@@ -61,49 +61,49 @@ static void DomainAlgebra(Registry& reg, string grp)
 
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
-		typedef IInterface1DFV1<TDomain, TAlgebra> T;
+		typedef IInterface1D<TDomain, TAlgebra> T;
 		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
-		string name = string("IInterface1DFV1").append(suffix);
+		string name = string("IInterface1D").append(suffix);
 		reg.add_class_<T, TBase >(name, grp);
 			//.add_method("check_values_at_interface", &T::check_values_at_interface, "", "solution grid function", "", "");
-		reg.add_class_to_group(name, "IInterface1DFV1", tag);
+		reg.add_class_to_group(name, "IInterface1D", tag);
 	}
 
 	// additive nD/1D interface
 	{
-		typedef AdditiveInterface1DFV1<TDomain, TAlgebra> T;
-		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
-		string name = string("AdditiveInterface1DFV1").append(suffix);
+		typedef AdditiveInterface1D<TDomain, TAlgebra> T;
+		typedef IInterface1D<TDomain, TAlgebra> TBase;
+		string name = string("AdditiveInterface1D").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
 			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
 				("function(s)#constrained subset#high-dim interface node subset#"
 				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "AdditiveInterface1DFV1", tag);
+		reg.add_class_to_group(name, "AdditiveInterface1D", tag);
 	}
 
 	// multiplicative nD/1D interface
 	{
-		typedef MultiplicativeInterface1DFV1<TDomain, TAlgebra> T;
-		typedef IInterface1DFV1<TDomain, TAlgebra> TBase;
-		string name = string("MultiplicativeInterface1DFV1").append(suffix);
+		typedef MultiplicativeInterface1D<TDomain, TAlgebra> T;
+		typedef IInterface1D<TDomain, TAlgebra> TBase;
+		string name = string("MultiplicativeInterface1D").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
 			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
 				("function(s)#constrained subset#high-dim interface node subset#"
 				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "MultiplicativeInterface1DFV1", tag);
+		reg.add_class_to_group(name, "MultiplicativeInterface1D", tag);
 	}
 
 	// InterfaceMapper
 	{
-		typedef typename IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper T;
+		typedef typename IInterface1D<TDomain, TAlgebra>::Interface1DMapper T;
 		typedef ILocalToGlobalMapper<TAlgebra> TBase;
 		string name = string("Interface1DMapper").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
 			.template add_constructor<void (*)(SmartPtr<IAssemble<TAlgebra> >)>
 				("SmartPtr to domainDisc")
-			.add_method("add_interface", &T::add_interface, "", "SmartPtr to class of IInterface1DFV1", "", "")
+			.add_method("add_interface", &T::add_interface, "", "SmartPtr to class of IInterface1D", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "Interface1DMapper", tag);
 

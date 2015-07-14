@@ -47,9 +47,6 @@ template <typename TDomain, typename TAlgebra>
 class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 {
 	public:
-		/// own type
-		typedef IInterface1DFV1<TDomain, TAlgebra> this_type;
-
 		/// world dimension
 		static const int worldDim = TDomain::dim;
 

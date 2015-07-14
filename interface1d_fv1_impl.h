@@ -12,7 +12,7 @@ namespace nernst_planck{
 
 
 template <typename TDomain, typename TAlgebra>
-IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::Interface1DMapper(SmartPtr<IAssemble<TAlgebra> > ass)
+IInterface1D<TDomain, TAlgebra>::Interface1DMapper::Interface1DMapper(SmartPtr<IAssemble<TAlgebra> > ass)
 {
 	SmartPtr<AssemblingTuner<TAlgebra> > assTuner = ass->ass_tuner();
 	assTuner->set_mapping(this);
@@ -20,7 +20,7 @@ IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::Interface1DMapper(SmartPt
 
 
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_local_vec_to_global
+void IInterface1D<TDomain, TAlgebra>::Interface1DMapper::add_local_vec_to_global
 (
 	vector_type& vec,
 	const LocalVector& lvec,
@@ -71,7 +71,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_local_vec_to_glo
 
 
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_local_mat_to_global
+void IInterface1D<TDomain, TAlgebra>::Interface1DMapper::add_local_mat_to_global
 (
 	matrix_type& mat,
 	const LocalMatrix& lmat,
@@ -143,7 +143,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_local_mat_to_glo
 
 
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_interface(SmartPtr<interface_type> intf)
+void IInterface1D<TDomain, TAlgebra>::Interface1DMapper::add_interface(SmartPtr<interface_type> intf)
 {
 	m_vspInterface.push_back(intf);
 }
@@ -151,7 +151,7 @@ void IInterface1DFV1<TDomain, TAlgebra>::Interface1DMapper::add_interface(SmartP
 
 
 template <typename TDomain, typename TAlgebra>
-IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
+IInterface1D<TDomain, TAlgebra>::IInterface1D
 (
 	const char* fcts,
 	const char* constrained,
@@ -190,27 +190,24 @@ IInterface1DFV1<TDomain, TAlgebra>::IInterface1DFV1
 
 
 
-/// destructor
 template <typename TDomain, typename TAlgebra>
-IInterface1DFV1<TDomain, TAlgebra>::~IInterface1DFV1()
+IInterface1D<TDomain, TAlgebra>::~IInterface1D()
 {
 	// do nothing
 }
 
 
 
-///	returns the type of constraints
 template <typename TDomain, typename TAlgebra>
-int IInterface1DFV1<TDomain, TAlgebra>::type() const
+int IInterface1D<TDomain, TAlgebra>::type() const
 {
 	return CT_CONSTRAINTS;
 }
 
 
 
-///	sets the approximation space
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::
+void IInterface1D<TDomain, TAlgebra>::
 set_approximation_space(SmartPtr<ApproximationSpace<TDomain> > approxSpace)
 {
 	// check whether the approximation space has already been set
@@ -225,7 +222,7 @@ set_approximation_space(SmartPtr<ApproximationSpace<TDomain> > approxSpace)
 
 /*
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::
+void IInterface1D<TDomain, TAlgebra>::
 check_values_at_interface(const vector_type& sol)
 {
 	size_t numFct = m_vFct.size();
@@ -239,9 +236,8 @@ check_values_at_interface(const vector_type& sol)
 */
 
 
-/// called when the approximation space has changed
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
+void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 {
 // get fct indices
 	// get dof distribution and domain for later use
@@ -383,76 +379,317 @@ void IInterface1DFV1<TDomain, TAlgebra>::approximation_space_changed()
 	}
 }
 
-
-
-/// for every constrained vertex: finds the corresponding constrainer and
-/// fills the constrainer map with the pair of corresponding indices
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::fill_constraint_map()
+template <typename TElem, typename TElemDesc, typename TDummy>
+IInterface1D<TDomain, TAlgebra>::OrientationOffset<TElem, TElemDesc, TDummy>::
+OrientationOffset
+(
+	std::vector<size_t>& vOrientOffset,
+	TElemDesc& target_desc,
+	TElem* constrg,
+	size_t p
+)
 {
+	UG_THROW("not implemented!")
+}
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::OrientationOffset<Vertex*, Vertex, TDummy>::
+OrientationOffset
+(
+	std::vector<size_t>& vOrientOffset,
+	Vertex& target_desc,
+	Vertex* constrg,
+	size_t p
+)
+{
+	// do nothing
+}
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::OrientationOffset<Edge, EdgeDescriptor, TDummy>::
+OrientationOffset
+(
+	std::vector<size_t>& vOrientOffset,
+	EdgeDescriptor& target_desc,
+	Edge* constrg,
+	size_t p
+)
+{
+	ComputeOrientationOffsetLagrange(vOrientOffset, target_desc, constrg, p);
+}
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::OrientationOffset<Face, FaceDescriptor, TDummy>::
+OrientationOffset
+(
+	std::vector<size_t>& vOrientOffset,
+	FaceDescriptor& target_desc,
+	Face* constrg,
+	size_t p
+)
+{
+	const int n_vrt = target_desc.num_vertices();
+	const int id0 = GetVertexIndex(&target_desc, constrg->vertex(0));
+	const int id1 = GetVertexIndex(&target_desc, constrg->vertex(1));
+	const bool sameOrientation = (id1 == (id0+1)%n_vrt);
+
+	switch (n_vrt)
+	{
+		case 3:
+			MapLagrangeMultiIndexTriangle(vOrientOffset, id0, sameOrientation, p);
+			break;
+		case 4:
+			MapLagrangeMultiIndexQuad(vOrientOffset, id0, sameOrientation, p);
+			break;
+		default: UG_THROW("No elements with #corners = " << n_vrt << " implemented.");
+	}
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy>
+IInterface1D<TDomain, TAlgebra>::GetConstrainer<TElem, TElemDesc, TContainingElem, TDummy>::
+GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElem** constrg_out)
+{
+	UG_ASSERT(constrg_out, "Pointer to pointer to out constraining vertex (third argument) must not be NULL.")
+
+	typedef typename MultiGrid::traits<TContainingElem>::secure_container cont_list;
+	typedef typename MultiGrid::traits<TElem>::secure_container elem_list;
+
+	SmartPtr<TDomain> dom = intf->approximation_space()->domain();
+
+	// loop elements that have constrd elem as boundary;
+	// find the one whose other end is not part of the constrained set
+	TElemDesc constrg;
+	cont_list cl;
+	dom->grid()->associated_elements(cl, constrd);
+	size_t cont = 0;
+	for (; cont < cl.size(); ++cont)
+	{
+		if (dom->subset_handler()->get_subset_index(cl[cont]) == intf->m_siConstr)
+			continue;
+
+		if (!cl[cont]->get_opposing_side(constrd, constrg))
+			{UG_THROW("No opposing side found!");}
+
+		break;
+	}
+
+	// ensure that the constrainer has been found
+	size_t n_vrt = constrg.num_vertices();
+	if (!n_vrt) {UG_THROW("No constrainer found!");}
+
+	// ensure that number of constrainer vertices is the same as number of constrained vertices
+	if (n_vrt != constrd->num_vertices())
+		UG_THROW("Number of constraining vertices (" << n_vrt << ") does not match number "
+				 "of constrained vertices (" << constrd->num_vertices() << ").");
+
+	// get real elem instead of descriptor
+	elem_list el;
+	dom->grid()->associated_elements(el, cl[cont]);
+	for (size_t elem = 0; elem < el.size(); ++elem)
+		if (CompareVertices(el[elem], &constrg))
+		{
+			*constrg_out = el[elem];
+			return;
+		}
+
+	UG_THROW("No constrainer found!");
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::GetConstrainer<Vertex, Vertex, Edge, TDummy>::
+GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out)
+{
+	UG_ASSERT(constrg_out, "Pointer to pointer to out constraining vertex (third argument) must not be NULL.")
+
 	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
+	SmartPtr<TDomain> dom = intf->approximation_space()->domain();
 
+	// loop associated edges; find the one not in the constrained set and take other end
+	edge_list el;
+	dom->grid()->associated_elements(el, constrd);
+	for (size_t edge = 0; edge < el.size(); edge++)
+	{
+		if (dom->subset_handler()->get_subset_index(el[edge]) == intf->m_siConstr)
+			continue;
+
+		if (!el[edge]->get_opposing_side(constrd, constrg_out))
+			UG_THROW("No opposing side found!");
+
+		return;
+	}
+
+	UG_THROW("No constrainer found!");
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TElem, typename TElemDesc, typename TDummy>
+IInterface1D<TDomain, TAlgebra>::TargetDescriptor<TElem, TElemDesc, TDummy>::
+TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElemDesc& desc)
+{
+	size_t n_vrt = constrd->num_vertices();
+	for (size_t vrt = 0; vrt < n_vrt; ++vrt)
+	{
+		// get constrained vertex
+		Vertex* constrd_vrt = constrd->vertex(vrt);
+
+		// get associated constrainer vertex
+		Vertex* constrg_vrt;
+		GetConstrainer<Vertex, Vertex, Edge>(intf, constrd_vrt, &constrg_vrt);
+
+		// set constrg vertex in target descriptor
+		desc.set_vertex(vrt, constrg_vrt);
+	}
+	desc.set_num_vertices(n_vrt);
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::TargetDescriptor<Vertex, Vertex, TDummy>::
+TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex& desc)
+{
+	// do nothing
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TDummy>
+IInterface1D<TDomain, TAlgebra>::TargetDescriptor<Edge, EdgeDescriptor, TDummy>::
+TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Edge* constrd, EdgeDescriptor& desc)
+{
+	for (size_t vrt = 0; vrt < 2; ++vrt)
+	{
+		// get constrained vertex
+		Vertex* constrd_vrt = constrd->vertex(vrt);
+
+		// get associated constrainer vertex
+		Vertex* constrg_vrt;
+		GetConstrainer<Vertex, Vertex, Edge>(intf, constrd_vrt, &constrg_vrt);
+
+		// set constrg vertex in target descriptor
+		desc.set_vertex(vrt, constrg_vrt);
+	}
+}
+
+template <typename TDomain, typename TAlgebra>
+template <typename TElem, typename TElemDesc, typename TContainingElem>
+void IInterface1D<TDomain, TAlgebra>::fill_constraint_map()
+{
 	ConstSmartPtr<DoFDistribution> dd = this->m_spApproxSpace->dof_distribution(GridLevel());
-	SmartPtr<TDomain> dom = this->approximation_space()->domain();
 
-	// number of functions
-	size_t numFct = m_vFct.size();
-
-	// loop constrained vertices
-	DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-	iter = dd->begin<Vertex>(m_siConstr);
-	iterEnd = dd->end<Vertex>(m_siConstr);
+	// loop constrained elements
+	typename DoFDistribution::traits<TElem>::const_iterator iter, iterEnd;
+	iter = dd->begin<TElem>(m_siConstr);
+	iterEnd = dd->end<TElem>(m_siConstr);
 
 	for (; iter != iterEnd; ++iter)
 	{
-		// get constrained vertex
-		Vertex* constrd = *iter;
+		// get constrained elem
+		TElem* constrd = *iter;
 
-		// loop associated edges; find the one whose other end is not in the constrained set
-		Vertex* constrg = NULL;
-		edge_list el;
-		dom->grid()->associated_elements(el, constrd);
-		for (size_t edge = 0; edge < el.size(); edge++)
-		{
-			Vertex* other;
-			el[edge]->get_opposing_side(constrd, &other);
+		// get constrainer
+		TElem* constrg;
+		GetConstrainer<TElem, TElemDesc, TContainingElem>(this, constrd, &constrg);
 
-			if (dom->subset_handler()->get_subset_index(other) != m_siConstr)
-			{
-				constrg = other;
-				break;
-			}
-		}
+		// preparations to find out numbering of constraining descriptor vertices relative
+		// to numbering of constrainers of vertices of constrained element
+		TElemDesc target_desc;
+		TargetDescriptor<TElem, TElemDesc>(this, constrd, target_desc);
 
-		// ensure that the constrainer has been found
-		if (!constrg) {UG_THROW("No constrainer found!");}
-
-	// find indices
+		// find indices
 		// loop functions
+		size_t numFct = m_vFct.size();
 		for (size_t fct = 0; fct < numFct; fct++)
 		{
-			std::vector<size_t> constrdInd;
-			std::vector<size_t> constrgInd;
+			const size_t fct_ind = m_vFct[fct];
+			std::vector<size_t> orientationOffsets;
+			LFEID lfeid = dd->lfeid(fct_ind);
+			switch (lfeid.type())
+			{
+				case LFEID::LAGRANGE:
+					// only calculate orientationOffsets for p > 2, (else only max 1 DoF on sub)
+					if (lfeid.order() <= 2) break;
 
-			// constrained index
-			if (!dd->is_def_in_subset(m_vFct[fct], m_siConstr))
-				{UG_THROW("Function " << m_vFct[fct] << "is not defined on constrained subset " << m_siConstr << ".");}
-			dd->inner_algebra_indices_for_fct(constrd, constrdInd, false, m_vFct[fct]);
+					OrientationOffset<TElem, TElemDesc>(orientationOffsets, target_desc, constrg, lfeid.order());
+					break;
 
-			// constraining index
-			int si = dd->subset_handler()->get_subset_index(constrg);
-			if (!dd->is_def_in_subset(m_vFct[fct], si))
-				{UG_THROW("Function " << m_vFct[fct] << "is not defined on constraining subset " << si << ".");}
-			dd->inner_algebra_indices_for_fct(constrg, constrgInd, false, m_vFct[fct]);
+				default:
+					UG_THROW("This interface is only implemented for Lagrange shape functions.");
+			}
+
+			// get inner DoF indices
+			std::vector<DoFIndex> constrdInd;
+			std::vector<DoFIndex> constrgInd;
+			dd->inner_dof_indices(constrd, fct_ind, constrdInd, false);
+			dd->inner_dof_indices(constrg, fct_ind, constrgInd, false);
 
 			// should not happen, but for debugging purposes:
-			UG_ASSERT(constrgInd.size() == 1, "More (or less) than one function index found on a vertex!");
-			UG_ASSERT(constrdInd.size() == 1, "More (or less) than one function index found on a vertex!");
+			UG_ASSERT(constrdInd.size() ==
+						dd->num_fct_dofs(fct_ind, constrd->reference_object_id(), m_siConstr),
+					  "Incorrect number of DoFs for fct " << fct_ind << " on subset " << m_siConstr << " with roid "
+					  << constrd->reference_object_id() << ": " << constrdInd.size() << " instead of "
+					  << dd->num_fct_dofs(fct_ind, constrd->reference_object_id(), m_siConstr));
+			UG_ASSERT(constrgInd.size() ==
+						dd->num_fct_dofs(fct_ind, constrg->reference_object_id(), dd->subset_handler()->get_subset_index(constrg)),
+					  "Incorrect number of DoFs for fct " << fct_ind << " on subset "
+					  << dd->subset_handler()->get_subset_index(constrg) << " with roid "
+					  << constrg->reference_object_id() << ": " << constrgInd.size() << " instead of "
+					  << dd->num_fct_dofs(fct_ind, constrg->reference_object_id(), dd->subset_handler()->get_subset_index(constrg)));
 
-			// fill map with pair of indices
-			m_constraintMap[constrdInd[0]] = ConstraintInfo(constrgInd[0], fct);
+			UG_COND_THROW(constrgInd.size() != constrdInd.size(),
+						  "Constraining and constrained elements do not have the same number of DoFs "
+						  "(" << constrgInd.size() << "/" << constrdInd.size() << ")");
+
+			// fill map with pairs of indices
+			size_t n_ind = constrgInd.size();
+			if (orientationOffsets.size())
+			{
+				UG_COND_THROW(orientationOffsets.size() != n_ind,
+							  "Orientation offset vector does not have the required size "
+							  "( " << orientationOffsets.size() << " instead of " << n_ind << ")");
+
+				for (size_t i = 0; i < n_ind; ++i)
+				{
+					UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
+					UG_ASSERT(!constrgInd[orientationOffsets[i]][1], "Block matrices are not supported (yet)!");
+					m_constraintMap[constrdInd[i][0]] = ConstraintInfo(constrgInd[orientationOffsets[i]][0], fct);
+				}
+			}
+			else
+			{
+				for (size_t i = 0; i < n_ind; ++i)
+				{
+					UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
+					UG_ASSERT(!constrgInd[i][1], "Block matrices are not supported (yet)!");
+					m_constraintMap[constrdInd[i][0]] = ConstraintInfo(constrgInd[i][0], fct);
+				}
+			}
 		}
 	}
+}
+
+
+
+template <typename TDomain, typename TAlgebra>
+void IInterface1D<TDomain, TAlgebra>::fill_constraint_map()
+{
+	ConstSmartPtr<DoFDistribution> dd = this->m_spApproxSpace->dof_distribution(GridLevel());
+
+	if (worldDim-1 >= VERTEX && dd->max_dofs(VERTEX) > 0)
+		fill_constraint_map<Vertex, Vertex, Edge>();
+	if (worldDim-1 >= EDGE && dd->max_dofs(EDGE) > 0)
+		fill_constraint_map<Edge, EdgeDescriptor, Face>();
+	if (worldDim-1 >= FACE && dd->max_dofs(FACE) > 0)
+		fill_constraint_map<Face, FaceDescriptor, Volume>();
 
 /* DEBUGGING
 	typedef std::map<Vertex*, Vertex*>::iterator map_it;
@@ -469,9 +706,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::fill_constraint_map()
 }
 
 
-///	adapts jacobian to enforce constraints
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
+void IInterface1D<TDomain, TAlgebra>::adjust_jacobian
 (	matrix_type& J,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
@@ -567,9 +803,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_jacobian
 
 
 
-///	adapts defect to enforce constraints
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
+void IInterface1D<TDomain, TAlgebra>::adjust_defect
 (	vector_type& d,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
@@ -591,9 +826,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_defect
 
 
 
-///	adapts matrix and rhs (linear case) to enforce constraints
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_linear
+void IInterface1D<TDomain, TAlgebra>::adjust_linear
 (	matrix_type& mat,
 	vector_type& rhs,
 	ConstSmartPtr<DoFDistribution> dd,
@@ -605,9 +839,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_linear
 
 
 
-///	adapts a rhs to enforce constraints
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_rhs
+void IInterface1D<TDomain, TAlgebra>::adjust_rhs
 (	vector_type& rhs,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
@@ -619,9 +852,8 @@ void IInterface1DFV1<TDomain, TAlgebra>::adjust_rhs
 
 
 
-///	sets the constraints in a solution vector
 template <typename TDomain, typename TAlgebra>
-void IInterface1DFV1<TDomain, TAlgebra>::adjust_solution
+void IInterface1D<TDomain, TAlgebra>::adjust_solution
 (	vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
 	number time

@@ -18,6 +18,7 @@
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
+#include "lib_disc/dof_manager/orientation.h"	// for MapLagrangeMultiIndexTriangle etc.
 
 
 namespace ug{
@@ -31,8 +32,8 @@ namespace nernst_planck{
  * in remote locations still matter (e.g. for realistic boundary conditions in the
  * window), with a 1D simplified model for the rest of the geometry.
  *
- * This class provides an implementation for FV discretizations of both sides of
- * the interface.
+ * This class provides an implementation for FV (of arbitrary order) discretizations
+ * of both sides of the interface.
  *
  * ------------------------
  * Geometry specifications
@@ -116,7 +117,7 @@ namespace nernst_planck{
  * Cf. documentation of the virtual methods.
  *
  * Two default implementations are realized in the derived classes
- * AdditiveInterface1DFV1 and MultiplicativeInterface1DFV1 with:
+ * AdditiveIInterface1D and MultiplicativeIInterface1D with:
  *
  * \f[
  *		f(u,u_1,u_2) = u + (u_2-u_1);
@@ -158,7 +159,7 @@ namespace nernst_planck{
 
 
 template <typename TDomain, typename TAlgebra>
-class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
+class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 {
 	public:
 		// nested class for mapping local "shadow" DoFs to global 1D interface DoF
@@ -175,7 +176,7 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 				typedef typename algebra_type::vector_type vector_type;
 
 				/// type of the interface
-				typedef IInterface1DFV1<TDomain,TAlgebra> interface_type;
+				typedef IInterface1D<TDomain,TAlgebra> interface_type;
 
 			public:
 				///	default constructor
@@ -205,7 +206,7 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 
 	public:
 		/// own type
-		typedef IInterface1DFV1<TDomain, TAlgebra> this_type;
+		typedef IInterface1D<TDomain, TAlgebra> this_type;
 
 		/// world dimension
 		static const int worldDim = TDomain::dim;
@@ -233,11 +234,11 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		 * @param high_dim_intfNode	the name of the subset of the high-dim interface node
 		 * @param one_dim_intfNode	the name of the subset of the one-dim interface node
 		 */
-		IInterface1DFV1(const char* fcts, const char* constrained,
+		IInterface1D(const char* fcts, const char* constrained,
 						const char* high_dim_intfNode, const char* one_dim_intfNode);
 
 		/// destructor
-		virtual ~IInterface1DFV1();
+		virtual ~IInterface1D();
 
 
 	// inherited methods (from IConstraint)
@@ -372,8 +373,156 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 		};
 
 	private:
-		/// for every constrained vertex: finds the corresponding constrainer and
-		/// fills the constrainer map with the pair of corresponding indices
+
+		/// computes offsets for algebra indices
+		/**
+		 *  Computation gives offsets with respect to an order implicitly defined by the
+		 *  target element descriptor (consult in-code documentation in orientation.cpp).
+		 *
+		 *  This functionality is needed when the constraintMap is being filled in the case
+		 *  of FV of order p > 2.
+		 *
+		 *  The element passed as third argument might be rotated and mirrored with respect
+		 *  to the target descriptor. Offsets are computed such that elem's i-th (inner) algebra
+		 *  index w.r.t. the order prescribed by the target descriptor can be obtained by
+		 *
+		 *      std::vector<DoFIndex> ind;
+		 *      dd->inner_dof_indices(elem, fct, ind, false);
+		 *      DoFIndex dof_i = ind[offsets[i]];
+		 *
+		 * @note Why usage of structs and Dummy template?
+		 *		 Implementation is realized using that partial specialization of nested template
+		 *		 structs is allowed (in contrast to specialization of templated methods) in not
+		 *		 fully specialized template classes.
+		 */
+		/// @{
+		template <typename TElem, typename TElemDesc, typename TDummy = void>
+		struct OrientationOffset
+		{
+			OrientationOffset
+			(
+				std::vector<size_t>& vOrientOffset,
+				TElemDesc& target_desc,
+				TElem* constrg,
+				size_t p
+			);
+		};
+		template <typename TDummy>
+		struct OrientationOffset<Vertex*, Vertex, TDummy>
+		{
+			OrientationOffset
+			(
+				std::vector<size_t>& vOrientOffset,
+				Vertex& target_desc,
+				Vertex* constrg,
+				size_t p
+			);
+		};
+		template <typename TDummy>
+		struct OrientationOffset<Edge, EdgeDescriptor, TDummy>
+		{
+			OrientationOffset
+			(
+				std::vector<size_t>& vOrientOffset,
+				EdgeDescriptor& target_desc,
+				Edge* constrg,
+				size_t p
+			);
+		};
+		template <typename TDummy>
+		struct OrientationOffset<Face, FaceDescriptor, TDummy>
+		{
+			OrientationOffset
+			(
+				std::vector<size_t>& vOrientOffset,
+				FaceDescriptor& target_desc,
+				Face* constrg,
+				size_t p
+			);
+		};
+		/// @}
+
+		/// computes the constrainer of a constrained element
+		/**
+		 *  The element can be any type of element contained in the constrained subset.
+		 *  Its constrainer is defined as the unique element of the same type and same
+		 *  dimension (dim) such that there is a base element of dimension (dim+1) not
+		 *  contained in the constrained subsets which connects constrained and constraining
+		 *  element.
+		 *
+		 *  This method is used when the constraintMap is being filled.
+		 *
+		 * @note Why usage of structs and Dummy template?
+		 *		 Implementation is realized using that partial specialization of nested template
+		 *		 structs is allowed (in contrast to specialization of templated methods) in not
+		 *		 fully specialized template classes.
+		 */
+		/// @{
+		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy = void>
+		struct GetConstrainer
+		{
+			GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElem** constrg_out);
+		};
+		template <typename TDummy>
+		struct GetConstrainer<Vertex, Vertex, Edge, TDummy>
+		{
+			GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out);
+		};
+		/// @}
+		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy>
+		friend struct GetConstrainer;
+
+		/// computes the target descriptor for a constrained element
+		/**
+		 * The target descriptor is a descriptor for the constrainer (as defined for
+		 * GetConstrainer) which has the same orientation and whose 0-th vertex is the
+		 * constrainer of the constrained element's 0-th vertex.
+		 * By this construction, its inner DoF indices have the same numbering as those
+		 * of the constrained element and it can thus be used to compute offsets using
+		 * OrientationOffset.
+		 *
+		 * As this is never necessary for vertices, the specialized template for vertices
+		 * does not do anything.
+		 *
+		 * @note Why usage of structs and Dummy template?
+		 *		 Implementation is realized using that partial specialization of nested template
+		 *		 structs is allowed (in contrast to specialization of templated methods) in not
+		 *		 fully specialized template classes.
+		 */
+		/// @{
+		template <typename TElem, typename TElemDesc, typename TDummy = void>
+		struct TargetDescriptor
+		{
+			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElemDesc& desc);
+		};
+		template <typename TDummy>
+		struct TargetDescriptor<Vertex, Vertex, TDummy>
+		{
+			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex& desc);
+		};
+		template <typename TDummy>
+		struct TargetDescriptor<Edge, EdgeDescriptor, TDummy>
+		{
+			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Edge* constrd, EdgeDescriptor& desc);
+		};
+		/// @}
+		template <typename TElem, typename TElemDesc, typename TDummy>
+		friend struct TargetDescriptor;
+
+		/// fill the constraintMap with inner indices of a specific element type
+		template <typename TElem, typename TElemDesc, typename TContainingElem>
+		void fill_constraint_map();
+
+		/// fill the constraintMap
+		/**
+		 *  After a call to this method, the constraintMap will contain any algebra index
+		 *  that belongs to the constrained subset as a key to an info struct containing
+		 *  (a) its constraining algebra index,
+		 *  (b) the function index this index belongs to.
+		 *
+		 *  The map is filled per element type containg indices using
+		 *  template <typename TElem, typename TElemDesc, typename TContainingElem> void fill_constraint_map().
+		 */
 		void fill_constraint_map();
 
 	protected:
@@ -420,7 +569,7 @@ class IInterface1DFV1: public IDomainConstraint<TDomain, TAlgebra>
 
 
 template <typename TDomain, typename TAlgebra>
-class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
+class AdditiveInterface1D : public IInterface1D<TDomain, TAlgebra>
 {
 	public:
 		///	type of algebra vector
@@ -428,23 +577,23 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		AdditiveInterface1DFV1
+		AdditiveInterface1D
 		(
 			const char* fcts,
 			const char* constrained,
 			const char* high_dim_intfNode,
 			const char* one_dim_intfNode
 		)
-	 	: IInterface1DFV1<TDomain, TAlgebra>
+	 	: IInterface1D<TDomain, TAlgebra>
 		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
 		{}
 
 		/// destructor
-		virtual ~AdditiveInterface1DFV1() {};
+		virtual ~AdditiveInterface1D() {};
 
-		// inherited from IInterface1DFV1
+		// inherited from IInterface1D
 
-		/// \copydoc IInterface1DFV1::constraintValue()
+		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue
 		(	typename vector_type::value_type& d,
 			const typename vector_type::value_type& u_c,
@@ -455,7 +604,7 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
 		}
 
-		/// \copydoc IInterface1DFV1::constraintValueDerivs()
+		/// \copydoc IInterface1D::constraintValueDerivs()
 		virtual void constraintValueDerivs
 		(	typename vector_type::value_type dd[3],
 			const typename vector_type::value_type& u_c,
@@ -535,7 +684,7 @@ class AdditiveInterface1DFV1 : public IInterface1DFV1<TDomain, TAlgebra>
 
 
 template <typename TDomain, typename TAlgebra>
-class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
+class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 {
 	public:
 		///	type of algebra vector
@@ -543,23 +692,23 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 
 	public:
 		///	constructor
-		MultiplicativeInterface1DFV1
+		MultiplicativeInterface1D
 		(
 			const char* fcts,
 			const char* constrained,
 			const char* high_dim_intfNode,
 			const char* one_dim_intfNode
 		)
-		: IInterface1DFV1<TDomain, TAlgebra>
+		: IInterface1D<TDomain, TAlgebra>
 		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
 		{};
 
 		/// destructor
-		virtual ~MultiplicativeInterface1DFV1() {};
+		virtual ~MultiplicativeInterface1D() {};
 
-		// inherited from IInterface1DFV1
+		// inherited from IInterface1D
 
-		/// \copydoc IInterface1DFV1::constraintValue()
+		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue
 		(
 			typename vector_type::value_type& d,
@@ -571,7 +720,7 @@ class MultiplicativeInterface1DFV1: public IInterface1DFV1<TDomain, TAlgebra>
 			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
 		}
 
-		/// \copydoc IInterface1DFV1::constraintValueDerivs()
+		/// \copydoc IInterface1D::constraintValueDerivs()
 		virtual void constraintValueDerivs
 		(
 			typename vector_type::value_type dd[3],
