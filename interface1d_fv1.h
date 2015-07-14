@@ -150,6 +150,10 @@ namespace nernst_planck{
  *   	 (see graphical representation above).
  *
  *
+ * @note This implementation is only designed to work for Finite Volume
+ * 		 discretizations and will probably fail miserably if used in
+ * 		 another setting.
+ *
  * \tparam	TDomain				type of Domain
  * \tparam	TAlgebra			type of Algebra
  *
