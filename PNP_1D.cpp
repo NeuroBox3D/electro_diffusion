@@ -27,7 +27,8 @@ PNP_1D<TDomain>::PNP_1D
   m_spApproxSpace(approx),
   m_bNonRegularGrid(false),
   m_aRadius("radius"),
-  m_nIon(0), _PHI_(0)
+  m_nIon(0), _PHI_(0),
+  m_reprDim(size_t(3))
 {
 	SubsetGroup ssg(m_spApproxSpace->subset_handler(), this->m_vSubset);
 	int d = ssg.get_highest_subset_dimension();
@@ -53,7 +54,8 @@ PNP_1D<TDomain>::PNP_1D
   m_spApproxSpace(approx),
   m_bNonRegularGrid(false),
   m_aRadius("radius"),
-  m_nIon(0), _PHI_(0)
+  m_nIon(0), _PHI_(0),
+  m_reprDim(size_t(3))
 {
 	SubsetGroup ssg(m_spApproxSpace->subset_handler(), this->m_vSubset);
 	int d = ssg.get_highest_subset_dimension();
@@ -191,6 +193,17 @@ void PNP_1D<TDomain>::set_dendritic_radius(const number r)
 	m_aaRadius = Grid::AttachmentAccessor<Vertex, ANumber>(*m_spApproxSpace->domain()->grid(), m_aRadius);
 }
 
+template <typename TDomain>
+void PNP_1D<TDomain>::set_represented_dimension(size_t dim)
+{
+	switch (dim)
+	{
+		case 2: m_reprDim = 2; break;
+		case 3: m_reprDim = 3; break;
+		default: UG_THROW("Can only represent either dimension 2 or 3.");
+	}
+}
+
 
 //////////////////////////////////////////////
 //   Assembling functions from IElemDisc   	//
@@ -266,7 +279,7 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
                                        m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
-		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
+		number scvfArea = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
 
 	// potential
 		// to compute eps \nabla phi
@@ -355,13 +368,16 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
+		number scvArea = (m_reprDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
+		number scvVolume = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 	// potential equation
 
+		// No, this is nonsense!
+		// We do not want this - as we ignore layer formation at the membrane!
+		/*
 		// E field over cylinder surface area (supposedly constant)
 		number el_surf_flux = m_permittivity_mem * u(_PHI_,co) / m_mem_thickness;
 
@@ -369,6 +385,7 @@ void PNP_1D<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, GridO
 		el_surf_flux *= scvArea;
 
 		d(_PHI_, co) -= el_surf_flux;
+		*/
 
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
@@ -420,10 +437,10 @@ void PNP_1D<TDomain>::add_def_M_elem(LocalVector& d, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
+		number scvArea = (m_reprDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
+		number scvVolume = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 		for (size_t i = 0; i < m_nIon; i++)
 		{
@@ -475,7 +492,7 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
                                         m_aaRadius[pElem->vertex(scvf.to())]);
 
 		// scvf area
-		number scvfArea = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
+		number scvfArea = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP : 2*radiusAtIP);
 
 		// compute grad(phi)
 		MathVector<worldDim> D_grad_phi, grad_phi;
@@ -581,14 +598,18 @@ void PNP_1D<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
+		number scvArea = (m_reprDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
+		number scvVolume = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 	// potential equation
+		// No, this is nonsense!
+		// We do not want this - as we ignore layer formation at the membrane!
+		/*
 		// E field over cylinder surface area
 		J(_PHI_, co, _PHI_, co) -= m_permittivity_mem / m_mem_thickness * scvArea;
+		*/
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 			J(_PHI_, co, i, co) += m_vValency[i] * F * scvVolume;
@@ -635,10 +656,10 @@ void PNP_1D<TDomain>::add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridO
 		number radiusAtIP = m_aaRadius[pElem->vertex(co)];
 
 		// surface area of dendritic scv
-		number scvArea = (worldDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
+		number scvArea = (m_reprDim == 3 ? 2*PI * radiusAtIP * scv.volume() : 2*scv.volume());
 
 		// volume of dendritic scv
-		number scvVolume = (worldDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
+		number scvVolume = (m_reprDim == 3 ? PI * radiusAtIP * radiusAtIP * scv.volume() : 2*radiusAtIP*scv.volume());
 
 		for (size_t i = 0; i < m_nIon; i++)
 		{

@@ -53,7 +53,7 @@ namespace nernst_planck{
  * 		\int\limits_{{\partial B}_{ax}} \varepsilon_0 \varepsilon_r \vec{\nabla}\phi \cdot \vec{n} d\nu
  *	\f]
  *
- *	Both of the equations are supposed to hold true for any arbitrarily thin
+ *	Both of the equations are supposed to hold for any arbitrarily thin
  *	cylindrical piece \f$ B \f$ of the tubular object whose boundary is decomposed
  *	into the two caps of the cylinder (\f$ {\partial B}_{ax} \f$) and the surface
  *	area (\f$ {\partial B}_r \f$).
@@ -67,8 +67,8 @@ namespace nernst_planck{
  * <li>	\f$ g_i \f$ specific membrane conductance for the i-th ion species [C/Vsm^2],
  * <li>	\f$ C_i \f$ specific membrane layer capacity for the i-th ion species [C/(Vm^2)],
  * <li>	\f$ E_i \f$ membrane reversal potential for the i-th ion species [V],
- * <li>	\f$ \varepsilon_r \f$ relative permittivity of the tubule [1],
- * <li>	\f$ \varepsilon_0 \f$ vacuum permittivity (physical constant) [C/Vm],
+ * <li>	\f$ \varepsilon_r \f$ relative permettivity of the tubule [1],
+ * <li>	\f$ \varepsilon_0 \f$ vacuum permettivity (physical constant) [C/Vm],
  * <li>	\f$ R \f$ universal gas constant (physical constant) [VC/molK],
  * <li>	\f$ T \f$ temperature [K],
  * <li>	\f$ F \f$ Faraday constant [C/mol],
@@ -232,6 +232,9 @@ class PNP_1D: public IElemDisc<TDomain>
 		/// set constant dendritic radius
 		void set_dendritic_radius(const number r);
 
+		/// set represented dimensionality
+		void set_represented_dimension(size_t dim);
+
 	protected:
 		/// approximation space (needed before given by domainDisc)
 		SmartPtr<ApproximationSpace<TDomain> > m_spApproxSpace;
@@ -271,6 +274,9 @@ class PNP_1D: public IElemDisc<TDomain>
 
 		/// membrane thickness
 		number m_mem_thickness;
+
+		/// represented dimension (default: 3)
+		size_t m_reprDim;
 
 	private:
 		void register_all_funcs();
