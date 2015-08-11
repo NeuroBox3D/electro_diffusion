@@ -61,7 +61,7 @@ namespace nernst_planck{
  * in the high-dimensional subdomain which is referred to as its "constrainer" or
  * "constraining vertex".
  *
- * The constrained verticese, in conjunction with their respective constrainers,
+ * The constrained vertices, in conjunction with their respective constrainers,
  * form new high-dimensional elements (quadrilaterals in 2D, prisms or hexahedra in 3D).
  * A discretization on the high-dimensional side with an equivalent on the 1D side that
  * is to be coupled by means of this interface will have to be extended to those new elements.
