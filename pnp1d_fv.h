@@ -1,18 +1,17 @@
 /*
- * PNP_1D.h
+ * pnp1d_fv.h
  *
- *  Created on: 08.07.2014
+ *  Created on: 13.08.2015
  *      Author: mbreit
  */
 
-#ifndef PNP1D_H_
-#define PNP1D_H_
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__PNP1D_FV_H_
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__PNP1D_FV_H_
 
 #include "common/common.h"
 #include "common/math/ugmath.h"
 #include "lib_disc/spatial_disc/elem_disc/elem_disc_interface.h"
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
-#include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"
+#include "lib_disc/spatial_disc/disc_util/fvho_geom.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
 
 
@@ -22,9 +21,9 @@ namespace nernst_planck{
 /// \addtogroup plugin_nernst_planck
 /// \{
 
-/// 1D PNP element disccretization
+/// 1D PNP element discretization for higher-order FV schemes
 /**	This class implements the IElemDisc interface to provide a 1D simplified
- *	FV1 discretization for the Poisson-Nernst-Planck (PNP) problem on branched
+ *	FV discretization for the Poisson-Nernst-Planck (PNP) problem on branched
  *	tubular objects of variable radius (intended usage: dendrites), incorporating
  *	a leakage flux across the tubule's surface boundary as well as a capacitive
  *	flux across the same boundary simulating the movement of ions into / out of
@@ -84,12 +83,12 @@ namespace nernst_planck{
  * 		 However, as the assumption of piecewise cylindrical compartments is inexact
  *		 anyway, this might not be all too bad.
  *
- * \date 08.07.2014
+ * \date 13.08.2015
  * \author mbreit
 */
 
 template <typename TDomain>
-class PNP_1D: public IElemDisc<TDomain>
+class PNP1D_FV: public IElemDisc<TDomain>
 {
         protected:
 		const number R;		// universal gas constant
@@ -97,7 +96,7 @@ class PNP_1D: public IElemDisc<TDomain>
 		const number F;		// Faraday constant
 
 	public:
-		typedef PNP_1D<TDomain> this_type;
+		typedef PNP1D_FV<TDomain> this_type;
 
 		typedef typename TDomain::position_attachment_type pos_att_type;
 		typedef typename TDomain::position_accessor_type pos_acc_type;
@@ -108,20 +107,17 @@ class PNP_1D: public IElemDisc<TDomain>
 		static const int worldDim = TDomain::dim;
 
 		///	constructor
-		PNP_1D(SmartPtr<ApproximationSpace<TDomain> > approx,
+		PNP1D_FV(SmartPtr<ApproximationSpace<TDomain> > approx,
 			   const char* functions = "", const char* subsets = "");
 
 		///	constructor
-		PNP_1D(SmartPtr<ApproximationSpace<TDomain> > approx,
+		PNP1D_FV(SmartPtr<ApproximationSpace<TDomain> > approx,
 			   const std::vector<std::string>& vFct, const std::vector<std::string>& vSubset);
 
 		/// destructor
-		virtual ~PNP_1D() {};
+		virtual ~PNP1D_FV() {};
 
 	// inherited methods
-		///	 returns the type of elem disc
-		//virtual int type() const {return EDT_ELEM | EDT_SIDE;}
-
 		/// requests assembling for trial spaces and grid type
 		/**
 		 * This function is called before the assembling starts. The
@@ -262,13 +258,13 @@ class PNP_1D: public IElemDisc<TDomain>
 		/// ion specific conductances of the plasma membrane
 		std::vector<number> m_vSpecConductance;
 
-		/// ion specific "capacities" for influency effects at the plasma membrane
+		/// ion specific "capacities" for influence effects at the plasma membrane
 		std::vector<number> m_vSpecCapacity;
 
 		/// ion diffusion tensor
 		std::vector<MathMatrix<worldDim,worldDim> > m_vDiffusionTensor;
 
-		/// electric permittivity (eps_r * eps_0)
+		/// electric permettivity (eps_r * eps_0)
 		MathMatrix<worldDim,worldDim> m_permittivity_dend;
 		number m_permittivity_mem;
 
@@ -278,41 +274,20 @@ class PNP_1D: public IElemDisc<TDomain>
 		/// represented dimension (default: 3)
 		size_t m_reprDim;
 
+	protected:
+		///	shape function set
+		LFEID m_lfeID;
+
+		///	integration order
+		int m_quadOrder;
+
+
 	private:
+		///	register utils
+		///	@{
 		void register_all_funcs();
-
-		struct Register
-		{
-			Register(this_type* pThis) : m_pThis(pThis) {};
-			this_type* m_pThis;
-			template<typename TElem > void operator()(TElem&)
-			{
-				//if (m_pThis->m_bNonRegularGrid)
-					//m_pThis->register_func<TElem, HFV1Geometry<TElem, worldDim> >();
-				//else
-					m_pThis->register_func<TElem, FV1Geometry<TElem, worldDim> >();
-			}
-		};
-
 		template <typename TElem, typename TFVGeom> void register_func();
-
-		/// struct holding values of shape functions in IPs
-		struct ShapeValues
-		{
-			public:
-				void resize(std::size_t nEip, std::size_t _nSh)
-				{
-					nSh = _nSh;
-					elemVals.resize(nEip);
-					for (std::size_t i = 0; i < nEip; i++) elemVals[i].resize(nSh);
-				}
-				number& shapeAtElemIP(std::size_t sh, std::size_t ip) {return elemVals[ip][sh];}
-				number* shapesAtElemIP(std::size_t ip) {return &elemVals[ip][0];}
-				std::size_t num_sh() {return nSh;}
-			private:
-				std::size_t nSh;
-				std::vector<std::vector<number> > elemVals;
-		} m_shapeValues;
+		/// @}
 };
 
 /// \}
@@ -320,4 +295,4 @@ class PNP_1D: public IElemDisc<TDomain>
 } // namespace nernst_planck
 } // namespace ug
 
-#endif // PNP1D_H_
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__PNP1D_FV_H_

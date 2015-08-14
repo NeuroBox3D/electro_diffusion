@@ -1,5 +1,8 @@
 // created by Andreas Vogel
 
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__ELECTRIC_CIRCUIT_H
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__ELECTRIC_CIRCUIT_H
+
 #include "common/ug_config.h"
 #include "common/error.h"
 #include <string.h>
@@ -192,3 +195,5 @@ class ElectricCircuit
 
 } // namespace nernst_planck
 } // namespace ug
+
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__ELECTRIC_CIRCUIT_H

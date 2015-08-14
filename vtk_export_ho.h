@@ -1,9 +1,12 @@
 /*
- * vtk_export_ho.cpp
+ * vtk_export_ho.h
  *
  *  Created on: 04.05.2015
  *      Author: mbreit
  */
+
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__VTK_EXPORT_HO_H_
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__VTK_EXPORT_HO_H_
 
 #include "lib_disc/function_spaces/grid_function_global_user_data.h"			// GlobalGridFunctionNumberData
 #include "lib_disc/function_spaces/dof_position_util.h"							// DoFPosition
@@ -296,3 +299,6 @@ void vtk_export_ho
 
 } // end namespace ug
 } // end namespace nernst_planck
+
+
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__VTK_EXPORT_HO_H_

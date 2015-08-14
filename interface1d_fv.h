@@ -1,24 +1,22 @@
 /*
- * interface1d_fv1.h
+ * interface1d_fv.h
  *
  *  Created on: 06.06.2014
  *      Author: mbreit
  */
 
-#ifndef INTERFACE1D_FV1_H_
-#define INTERFACE1D_FV1_H_
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
 
 
 #include <map>
-#include <limits>	// for numeric_limits<>::max()
+#include <limits>
+#include <vector>
 
-#include "common/common.h"
-#include "common/math/ugmath.h"
-#include "lib_algebra/operator/interface/matrix_operator.h"
-#include "lib_disc/spatial_disc/constraints/constraint_interface.h"
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
-#include "lib_disc/spatial_disc/disc_util/geom_provider.h"
-#include "lib_disc/dof_manager/orientation.h"	// for MapLagrangeMultiIndexTriangle etc.
+#include "lib_disc/spatial_disc/constraints/constraint_interface.h"	// IDomainConstraint
+#include "lib_disc/spatial_disc/local_to_global/local_to_global_mapper.h" // ILocalToGlobalMapper
+#include "lib_disc/assemble_interface.h"	// IAssemble
+#include "lib_disc/dof_manager/orientation.h"	// MapLagrangeMultiIndexTriangle etc.
 
 
 namespace ug{
@@ -812,6 +810,6 @@ class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 } // namespace ug
 
 
-#include "interface1d_fv1_impl.h"
+#include "interface1d_fv_impl.h"
 
-#endif /* INTERFACE1D_FV1_H_ */
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H

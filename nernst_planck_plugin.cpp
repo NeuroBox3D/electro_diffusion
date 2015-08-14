@@ -9,11 +9,12 @@
 #include "bridge/util_domain_algebra_dependent.h"
 
 #include "nernst_planck_util.h"
-#include "PNP_1D.h"
-#include "interface1d_fv1.h"
 #include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
 #include "constrained_ilu.h"
+#include "interface1d_fv.h"
+#include "pnp1d_fv1.h"
+#include "pnp1d_fv.h"
 #include "vtk_export_ho.h"
 
 using namespace std;
@@ -178,11 +179,11 @@ static void Domain(Registry& reg, string grp)
 	* "name1 | style1 | options1 # name2 | style2 | options2 # ... "
 	*/
 
-	// 1D PNP
+	// 1D PNP FV1
 	{
-		typedef PNP_1D<TDomain> T;
+		typedef PNP1D_FV1<TDomain> T;
 		typedef IElemDisc<TDomain> TBase;
-		string name = string("PNP_1D").append(suffix);
+		string name = string("PNP1D_FV1").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, const char*, const char*)>("function(s)#subset(s)")
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, std::vector<std::string>, std::vector<std::string>)>
@@ -196,8 +197,31 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_permettivities", &T::set_permettivities, "", "permettivity value dendrite (eps_dend*eps_0)#permettivity value membrane (eps_mem*eps_0)", "", "")
 			.add_method("set_membrane_thickness", &T::set_membrane_thickness, "", "membrane thickness", "", "")
 			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
+			.add_method("set_represented_dimension", &T::set_represented_dimension, "", "represented dimension (either 2 or 3)", "")
 			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "PNP_1D", tag);
+		reg.add_class_to_group(name, "PNP1D_FV1", tag);
+	}
+	// 1D PNP FV
+	{
+		typedef PNP1D_FV<TDomain> T;
+		typedef IElemDisc<TDomain> TBase;
+		string name = string("PNP1D_FV").append(suffix);
+		reg.add_class_<T, TBase >(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, const char*, const char*)>("function(s)#subset(s)")
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, std::vector<std::string>, std::vector<std::string>)>
+				("function(s)#subset(s)")
+			.add_method("set_ions", &T::set_ions, "", "vector of ion species names", "", "")
+			.add_method("set_valencies", &T::set_valencies, "", "vector of valencies", "", "")
+			.add_method("set_reversal_potential", &T::set_reversal_potentials, "", "vector of reversal potentials", "", "")
+			.add_method("set_specific_conductances", &T::set_specific_conductances, "", "vector of specific conductances", "", "")
+			.add_method("set_specific_capacities", &T::set_specific_capacities, "", "vector of specific capacities", "", "")
+			.add_method("set_diffusion_constants", &T::set_diffusion_constants, "", "vector of ion diffusion constants", "", "")
+			.add_method("set_permettivities", &T::set_permettivities, "", "permettivity value dendrite (eps_dend*eps_0)#permettivity value membrane (eps_mem*eps_0)", "", "")
+			.add_method("set_membrane_thickness", &T::set_membrane_thickness, "", "membrane thickness", "", "")
+			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
+			.add_method("set_represented_dimension", &T::set_represented_dimension, "", "represented dimension (either 2 or 3)", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "PNP1D_FV", tag);
 	}
 }
 

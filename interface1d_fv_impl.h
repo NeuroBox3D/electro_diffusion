@@ -1,11 +1,11 @@
 /*
- * interface1d_fv1_impl.h
+ * interface1d_fv_impl.h
  *
  *  Created on: 06.06.2014
  *      Author: mbreit
  */
 
-#include "interface1d_fv1.h"
+#include "interface1d_fv.h"
 
 namespace ug{
 namespace nernst_planck{

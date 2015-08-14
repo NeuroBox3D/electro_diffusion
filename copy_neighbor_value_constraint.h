@@ -5,8 +5,8 @@
  *      Author: mbreit
  */
 
-#ifndef COPY_NEIGHBOR_VALUE_CONSTRAINT__H_
-#define COPY_NEIGHBOR_VALUE_CONSTRAINT__H_
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__COPY_NEIGHBOR_VALUE_CONSTRAINT_H
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__COPY_NEIGHBOR_VALUE_CONSTRAINT_H
 
 
 #include <map>
@@ -165,4 +165,4 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 
 #include "copy_neighbor_value_constraint_impl.h"
 
-#endif // COPY_NEIGHBOR_VALUE_CONSTRAINT__H_
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__COPY_NEIGHBOR_VALUE_CONSTRAINT_H

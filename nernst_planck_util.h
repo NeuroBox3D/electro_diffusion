@@ -5,8 +5,8 @@
  *      Author: mbreit
  */
 
-#ifndef _NERNST_PLANCK__NERNST_PLANCK_UTIL_H_
-#define _NERNST_PLANCK__NERNST_PLANCK_UTIL_H_
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H
 
 
 #include "common/common.h"
@@ -37,4 +37,4 @@ number writeResidualsToFile
 
 #include "nernst_planck_util_impl.h"
 
-#endif // _NERNST_PLANCK__NERNST_PLANCK_UTIL_H_
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H

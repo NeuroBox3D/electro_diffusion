@@ -5,8 +5,8 @@
  *      Author: mbreit
  */
 
-#ifndef CONSTRAINED_ILU_H_
-#define CONSTRAINED_ILU_H_
+#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__CONSTRAINED_ILU_H
+#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__CONSTRAINED_ILU_H
 
 #include "common/util/smart_pointer.h"
 #include "lib_algebra/operator/interface/preconditioner.h"
@@ -18,7 +18,7 @@
 	#include "lib_algebra/parallelization/parallel_matrix_overlap_impl.h"
 #endif
 #include "lib_algebra/algebra_common/permutation_util.h"
-#include "../plugins/experimental/nernst_planck/interface1d_fv1.h"
+#include "interface1d_fv.h"
 
 #include <vector>
 
@@ -459,7 +459,15 @@ class ILUC : public IPreconditioner<TAlgebra>
 			{
 				if (m_spDD.valid())
 					for (size_t i = 0; i < m_vConstraint.size(); i++)
-						m_vConstraint[i]->adjust_solution(c, m_spDD, m_time);
+					{
+						// TODO: this is a little hack and should be improved
+						// this implementation supposes that adjust_defect writes zeros to those
+						// entries that are constraint (this is certainly not guaranteed) and will
+						// not use the second argument (which should normally be the solution, but
+						// we do not have the solution here, so we use the defect just to provide
+						// ANY argument)
+						m_vConstraint[i]->adjust_defect(c, d, m_spDD, m_time);
+					}
 				else
 					UG_THROW("DoF distribution is not valid.")
 			} UG_CATCH_THROW(" Cannot adjust solution.");
@@ -504,4 +512,4 @@ class ILUC : public IPreconditioner<TAlgebra>
 } // end namespace ug
 
 
-#endif /* CONSTRAINED_ILU_H_ */
+#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__CONSTRAINED_ILU_H
