@@ -395,7 +395,7 @@ OrientationOffset
 
 template <typename TDomain, typename TAlgebra>
 template <typename TDummy>
-IInterface1D<TDomain, TAlgebra>::OrientationOffset<Vertex*, Vertex, TDummy>::
+IInterface1D<TDomain, TAlgebra>::OrientationOffset<Vertex, Vertex, TDummy>::
 OrientationOffset
 (
 	std::vector<size_t>& vOrientOffset,

@@ -410,7 +410,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 			);
 		};
 		template <typename TDummy>
-		struct OrientationOffset<Vertex*, Vertex, TDummy>
+		struct OrientationOffset<Vertex, Vertex, TDummy>
 		{
 			OrientationOffset
 			(
