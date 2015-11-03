@@ -73,6 +73,110 @@ number writeResidualsToFile
 	return l2_sq;
 }
 
+template <typename TDomain>
+void adjust_geom_after_refinement
+(
+	SmartPtr<ApproximationSpace<TDomain> > approx,
+	const char* innerSubset,
+	const char* fullDimIntfNodeSubset,
+	const char* lowDimIntfNodeSubset
+)
+{
+	SmartPtr<TDomain> dom = approx->domain();
+	SmartPtr<MultiGridSubsetHandler> ssh = dom->subset_handler();
+	SmartPtr<MultiGrid> mg = dom->grid();
+
+	// get subset indices for given subsets
+	int si_intf = ssh->get_subset_index(fullDimIntfNodeSubset);
+	int si_1d_intf = ssh->get_subset_index(lowDimIntfNodeSubset);
+	int si_inner = ssh->get_subset_index(innerSubset);
+
+// (A) move interface node of full-dim side if need be (i.e. if it has not already been moved)
+	// find full-dim interface node in top_level-1 first
+	Vertex* intf = NULL;
+
+	UG_COND_THROW(ssh->num_levels() < 2, "Not enough levels in multigrid. At least two levels must be present "
+			"after refinement in order to use this method.");
+
+	uint lvl = ssh->num_levels()-2; // top level - 1
+	VertexIterator iter = ssh->begin<Vertex>(si_intf, lvl);
+	if (iter == ssh->end<Vertex>(si_intf, lvl))
+	{
+#ifndef UG_PARALLEL
+		UG_THROW("No vertex in subset for high-dimensional interface node. This is not allowed!");
+#else
+		if (pcl::NumProcs() <= 1)
+		{
+			UG_THROW("No vertex in subset for high-dimensional interface node. This is not allowed!");
+		}
+		// else do nothing
+#endif
+	}
+	else
+	{
+		intf = *iter;
+
+		// to be on the safe side
+		if (++iter != ssh->end<Vertex>(si_intf, lvl))
+			{UG_THROW("More than one vertex in subset for high-dimensional interface node. This is not allowed!");}
+	}
+
+	// stop here if interface node not present on this proc
+	if (!intf)
+#ifndef UG_PARALLEL
+		UG_THROW("No full-dim interface node found on level top-1.");
+#else
+		return;
+	else
+	{
+		// it may turn out that the level below top is distributed to another
+		// process (and therefore exists twice, as vmaster and vslave)
+		// in this case, we only need the vslave
+		const DistributedGridManager* dgm = mg->distributed_grid_manager();
+		if (dgm->contains_status(intf, ES_V_MASTER)) return;
+	}
+#endif
+
+	// now find new position:
+	// find edge connecting full-d intf node to 1d intf node
+	// vertex child of this edge is full-d intf node on top level
+	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
+	edge_list el;
+	dom->grid()->associated_elements(el, intf);
+	size_t e = 0;
+	for (; e < el.size(); ++e)
+	{
+		Vertex* other;
+		if (!el[e]->get_opposing_side(intf, &other))
+			{UG_THROW("No opposing side found!");}
+
+		if (ssh->get_subset_index(other) != si_1d_intf)
+			continue;
+
+		break;
+	}
+
+	if (e == el.size())
+		UG_THROW("New full-dimensional interface node could not be determined.\n"
+				 "There might be a processor boundary separating interfaces nodes? "
+				 "This is not allowed to happen.");
+
+	Vertex* newIntf = mg->get_child_vertex(el[e]);
+	if (!newIntf)
+		UG_THROW("New full-dim interface node could not be determined.\n"
+				 "The top level interface nodes are involved in a vertical interface. "
+				 "This case is not implemented.");
+
+	ssh->assign_subset(newIntf, si_intf);
+
+	// change the subset of the child of top_level-1 full-d intf node to inner subset
+	Vertex* prev_intf_top = (*el[e])[0];
+	if (!prev_intf_top)
+		UG_THROW("New full-dim interface node could not be determined.\n"
+				 "The top level interface nodes are involved in a vertical interface. "
+				 "This case is not implemented.");
+	ssh->assign_subset(mg->get_child_vertex(intf), si_inner);
+}
 
 
 } // namspace calciumDynamics

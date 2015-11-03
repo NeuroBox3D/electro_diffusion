@@ -7,6 +7,10 @@
 
 #include "interface1d_fv.h"
 
+#ifdef UG_PARALLEL
+	#include "lib_grid/parallelization/distributed_grid.h"
+#endif
+
 namespace ug{
 namespace nernst_planck{
 
@@ -240,8 +244,7 @@ template <typename TDomain, typename TAlgebra>
 void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 {
 // get fct indices
-	// get dof distribution and domain for later use
-	ConstSmartPtr<DoFDistribution> dd = this->approximation_space()->dof_distribution(GridLevel());
+	// get domain for later use
 	SmartPtr<TDomain> dom = this->approximation_space()->domain();
 
 	// store indices of functions in function group
@@ -275,6 +278,17 @@ void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 		UG_THROW("At least one of the given subsets is not contained in the "
 				  "geometry handled by this domain's subset handler");
 	}
+
+	update();
+}
+
+
+template <typename TDomain, typename TAlgebra>
+void IInterface1D<TDomain, TAlgebra>::update()
+{
+	// get dof distribution and domain for later use
+	ConstSmartPtr<DoFDistribution> dd = this->approximation_space()->dof_distribution(GridLevel());
+	SmartPtr<TDomain> dom = this->approximation_space()->domain();
 
 // find algebra indices for interface nodes
 	Vertex* iv1 = NULL;	// high-dim interface node
@@ -336,6 +350,7 @@ void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 	if (iv1 != NULL && iv2 != NULL)
 	{
 		int ssi1 = dom->subset_handler()->get_subset_index(iv1);
+		m_algInd[0].clear();
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
 		{
 			std::vector<size_t> ind1;
@@ -352,6 +367,7 @@ void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 		}
 
 		int ssi2 = dom->subset_handler()->get_subset_index(iv2);
+		m_algInd[1].clear();
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
 		{
 			std::vector<size_t> ind2;
@@ -378,6 +394,7 @@ void IInterface1D<TDomain, TAlgebra>::approximation_space_changed()
 				 "Make sure the constrained nodes are not separated from their interface nodes by the partitioning.");
 	}
 }
+
 
 template <typename TDomain, typename TAlgebra>
 template <typename TElem, typename TElemDesc, typename TDummy>
@@ -585,6 +602,8 @@ template <typename TElem, typename TElemDesc, typename TContainingElem>
 void IInterface1D<TDomain, TAlgebra>::fill_constraint_map()
 {
 	ConstSmartPtr<DoFDistribution> dd = this->m_spApproxSpace->dof_distribution(GridLevel());
+
+	m_constraintMap.clear();
 
 	// loop constrained elements
 	typename DoFDistribution::traits<TElem>::const_iterator iter, iterEnd;

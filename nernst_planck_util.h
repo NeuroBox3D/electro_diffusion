@@ -31,6 +31,22 @@ number writeResidualsToFile
 );
 
 
+/// adjusts interface after a refinement of the geometry
+/**
+ * When a geometry with an interface is refined, the interface node on the full-dimensional
+ * side will no longer be correctly located on the top level (one layer too far from the interface).
+ * We therefore need to re-locate this interface node every time we refine the interface (globally).
+ */
+template <typename TDomain>
+void adjust_geom_after_refinement
+(
+	SmartPtr<ApproximationSpace<TDomain> > approx,
+	const char* innerSubset,
+	const char* fullDimIntfNodeSubset,
+	const char* lowDimIntfNodeSubset
+);
+
+
 
 } // namspace calciumDynamics
 } // namespace ug

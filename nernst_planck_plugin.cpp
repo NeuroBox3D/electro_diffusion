@@ -65,7 +65,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef IInterface1D<TDomain, TAlgebra> T;
 		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
 		string name = string("IInterface1D").append(suffix);
-		reg.add_class_<T, TBase >(name, grp);
+		reg.add_class_<T, TBase >(name, grp)
+			.add_method("update", &T::update);
 			//.add_method("check_values_at_interface", &T::check_values_at_interface, "", "solution grid function", "", "");
 		reg.add_class_to_group(name, "IInterface1D", tag);
 	}
@@ -178,6 +179,12 @@ static void Domain(Registry& reg, string grp)
 	* // parameter information for VRL
 	* "name1 | style1 | options1 # name2 | style2 | options2 # ... "
 	*/
+
+	// adjust geometry after refinement
+	reg.add_function("adjust_geom_after_refinement", &adjust_geom_after_refinement<TDomain>, grp.c_str(),
+					 "", "approximation space#inner subset name#full-dim interface node subset name"
+					 "#1d interface node subset name", "adjusts location of full-dim interface node after"
+					 "global refinement of the interface");
 
 	// 1D PNP FV1
 	{

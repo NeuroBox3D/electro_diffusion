@@ -308,7 +308,11 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		void approximation_space_changed();
 
 	public:
-		// methods to be implemented by a concretization of this interface
+		/// update constraint index information
+		void update();
+
+	public:
+		// methods to be implemented by a specialization of this interface
 
 		/// function returning the defect value for a constrained node
 		/**
