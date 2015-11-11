@@ -10,7 +10,7 @@ project(NERNST_PLANCK)
 
 
 # include the definitions and dependencies for ug-plugins.
-include("../../../cmake/ug_plugin_includes.cmake")
+include(${UG_ROOT_CMAKE_PATH}/ug_plugin_includes.cmake)
 
 
 # sources
@@ -27,7 +27,7 @@ set(linkLibraries)
 
 if(buildEmbeddedPlugins)
 	# add the sources to ug4's sources
-	EXPORTSOURCES(plugins/experimental/nernst_planck ${SOURCES})
+	EXPORTSOURCES(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
 	#exportDependencies(${ANN_LIBRARY})
 else(buildEmbeddedPlugins)
 	# create a shared library from the sources and link it against ug4 and external libraries
