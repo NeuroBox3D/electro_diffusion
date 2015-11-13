@@ -752,6 +752,22 @@ void IInterface1D<TDomain, TAlgebra>::adjust_jacobian
 #endif
 */
 
+/*
+// DEBUG (serial!): write constraint map to file
+typename std::map<size_t, ConstraintInfo>::iterator it = m_constraintMap.begin();
+typename std::map<size_t, ConstraintInfo>::iterator itEnd = m_constraintMap.end();
+
+std::ofstream outFile;
+outFile.open("constraintMap.dat", std::ios_base::out);
+try
+{
+	for (; it != itEnd; ++it)
+		outFile << it->first << ": " << it->second.constrgInd << " (" << it->second.fct << ")\n";
+}
+UG_CATCH_THROW("Output file 'debug_ilut.dat' could not be written to.");
+outFile.close();
+*/
+
 	typedef typename matrix_type::row_iterator row_iterator;
 
 	// loop rows
@@ -778,7 +794,7 @@ void IInterface1D<TDomain, TAlgebra>::adjust_jacobian
 		// including constraints from other equations (if coupled)
 
 		// loop column existing entries of row
-		std::vector<typename std::map<size_t, ConstraintInfo>::iterator> colIndices;
+		std::vector<typename std::pair<size_t, ConstraintInfo> > colIndices;
 		for (row_iterator rit = J.begin_row(i); rit != J.end_row(i); ++rit)
 		{
 			// if a column index is part of the constrained set, then adjust row
@@ -788,16 +804,16 @@ void IInterface1D<TDomain, TAlgebra>::adjust_jacobian
 			if (constraintMapIt != m_constraintMap.end())
 			{
 				// store constrained col index until row_iterator reaches end
-				colIndices.push_back(constraintMapIt);
+				colIndices.push_back(std::make_pair(rit.index(), constraintMapIt->second));
 			}
 		}
 
 		// go through row entries again and adapt for constraints
 		for (size_t col = 0; col < colIndices.size(); col++)
 		{
-			size_t constrdInd = colIndices[col]->first;
-			size_t constrgInd = colIndices[col]->second.constrgInd;
-			size_t fct = colIndices[col]->second.fct;
+			size_t constrdInd = colIndices[col].first;
+			size_t constrgInd = colIndices[col].second.constrgInd;
+			size_t fct = colIndices[col].second.fct;
 			size_t IntfNodeHdInd = m_algInd[0][fct];
 			size_t IntfNode1dInd = m_algInd[1][fct];
 
@@ -805,14 +821,49 @@ void IInterface1D<TDomain, TAlgebra>::adjust_jacobian
 			typename vector_type::value_type defDeriv[3];
 			constraintValueDerivs(defDeriv, u[constrgInd], u[IntfNodeHdInd], u[IntfNode1dInd]);
 
+			// NOTE: "If a side effect on a scalar object is unsequenced relative to either
+			//       another side effect on the same scalar object or a value computation using
+			//       the value of the same scalar object, the behavior is undefined."
+			//       (http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3690.pdf)
+			//
+			//       In both of the following expressions, we might have a side effect in the
+			//       evaluation of the lhs (entry might not be present in the CRS matrix and
+			//       would need to be created then, possibly changing the value of the memory
+			//       the rhs access to the same matrix is associated with)! The result depends
+			//       on the order in which lhs and rhs evaluation are carried out, which is
+			//       undefined.
+			//
+			//       J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
+			//		 J(i, constrgInd) = J(i, constrdInd) * defDeriv[0];
+			//
+			//       We therefore need to take extra caution:
+
 			// deriv wrt constraining
-			J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
+			if (J.has_connection(i, constrgInd))
+				J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
+			else
+			{
+				typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[0];
+				J(i, constrgInd) = help;
+			}
 
 			// deriv wrt interface vertex on constraining side
-			J(i, IntfNodeHdInd) += J(i, constrdInd) * defDeriv[1];
+			if (J.has_connection(i, IntfNodeHdInd))
+				J(i, IntfNodeHdInd) += J(i, constrdInd) * defDeriv[1];
+			else
+			{
+				typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[1];
+				J(i, IntfNodeHdInd) = help;
+			}
 
 			// deriv wrt interface vertex on constrained side
-			J(i, IntfNode1dInd) += J(i, constrdInd) * defDeriv[2];
+			if (J.has_connection(i, IntfNode1dInd))
+				J(i, IntfNode1dInd) += J(i, constrdInd) * defDeriv[2];
+			else
+			{
+				typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[2];
+				J(i, IntfNode1dInd) = help;
+			}
 
 			// deriv wrt constrained vertex
 			J(i, constrdInd) = 0.0;
