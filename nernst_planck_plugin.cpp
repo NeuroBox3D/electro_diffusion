@@ -60,6 +60,18 @@ static void DomainAlgebra(Registry& reg, string grp)
 						 "writes residuals in every dof to file as required by Ivo's optimization routines "
 						 "and returns squared 2-norm of residual vector");
 
+	// export solution
+	reg.add_function("export_solution", &exportSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+					 "", "solution#time#subsetNames#functionNames#outFileName",
+					 "outputs solutions to file");
+
+	// import solution
+	reg.add_function("import_solution", &importSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+					 "", "solution#subset names#function name#input file name",
+					 "writes values for the given function and on the given subsets "
+					 "from the given file to the given solution vector "
+					 "(using the value of the nearest neighbor for each vertex)");
+
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
 		typedef IInterface1D<TDomain, TAlgebra> T;

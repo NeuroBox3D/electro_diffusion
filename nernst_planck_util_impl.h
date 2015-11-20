@@ -7,6 +7,11 @@
 
 #include "nernst_planck_util.h"
 
+#include "../MembranePotentialMapping/vm2ug_rework.h"	// Mapper
+#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"	// DimFV1Geometry
+#include "lib_disc/function_spaces/dof_position_util.h"	// DoFPosition
+
+#include <limits>
 
 namespace ug{
 namespace nernst_planck{
@@ -176,6 +181,277 @@ void adjust_geom_after_refinement
 				 "The top level interface nodes are involved in a vertical interface. "
 				 "This case is not implemented.");
 	ssh->assign_subset(mg->get_child_vertex(intf), si_inner);
+}
+
+
+
+
+// /////////////////////// //
+// export solution command //
+// /////////////////////// //
+
+// helper function
+template <typename TGridFunction, typename TBaseElem>
+void exportSolution
+(
+	SmartPtr<TGridFunction> solution,
+	size_t si,
+	size_t fi,
+	std::ofstream& ofs
+)
+{
+	typedef typename TGridFunction::domain_type domain_type;
+
+	// retrieve domain and dofDistr from approxSpace
+	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
+	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
+	const LFEID lfeid = dofDistr->lfeid(fi);
+
+	//	get elem iterator for current subset and elem type
+	typedef typename DoFDistribution::traits<TBaseElem>::const_iterator itType;
+	itType iter = dofDistr->template begin<TBaseElem>(si);
+	itType iterEnd = dofDistr->template end<TBaseElem>(si);
+
+	// loop over all elems
+	for (; iter != iterEnd; ++iter)
+	{
+		// get current vertex
+		TBaseElem* elem = *iter;
+
+		// get coords
+		std::vector<typename domain_type::position_type> coords;
+		InnerDoFPosition<domain_type>(coords, elem, *domain, lfeid);
+
+		// get multi-indices
+		std::vector<DoFIndex> multInd;
+		dofDistr->inner_dof_indices(elem, fi, multInd);
+
+		UG_ASSERT(coords.size() == multInd.size(), "#DoF mismatch");
+
+		// get values of DoFs
+		number val;
+		size_t nDof = multInd.size();
+		for (size_t dof = 0; dof < nDof; ++dof)
+		{
+			val = DoFRef(*solution, multInd[dof]);
+
+			// write solution to file
+			for (size_t i = 0; i < coords[dof].size(); ++i)
+				ofs << coords[dof][i] << " ";
+			ofs << val << std::endl;
+		}
+	}
+}
+
+
+template <typename TGridFunction>
+void exportSolution
+(
+	SmartPtr<TGridFunction> solution,
+	const number time,
+	const char* subsetNames,
+	const char* functionNames,
+	const char* outFileName
+)
+{
+	typedef typename TGridFunction::domain_type domain_type;
+
+	// retrieve dofDistr from solution
+	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
+
+	// get subset group to be measured on (if none provided: take all)
+	SubsetGroup ssGrp;
+	if (!*subsetNames)
+	{
+		ssGrp.set_subset_handler(dofDistr->subset_handler());
+		ssGrp.add_all();
+	}
+	else
+	{
+		try {ssGrp = dofDistr->subset_grp_by_name(subsetNames);}
+		UG_CATCH_THROW("At least one of the subsets in '" << subsetNames
+				<< "' is not contained in the approximation space (or something else was wrong).");
+	}
+
+	// get function group to be measured (if none provided: take all)
+	FunctionGroup fctGrp;
+	if (!*functionNames)
+	{
+		fctGrp.set_function_pattern(dofDistr->function_pattern());
+		fctGrp.add_all();
+	}
+	else
+	{
+		try {fctGrp = dofDistr->fct_grp_by_name(functionNames);}
+		UG_CATCH_THROW("At least one of the functions in '" << functionNames
+						<< "' is not contained in the approximation space (or something else was wrong).");
+	}
+
+	// loop functions
+	for (size_t fi = 0; fi < fctGrp.size(); fi++)
+	{
+		// construct outFile name
+		std::ostringstream ofnss(outFileName, std::ios_base::app);
+		ofnss << "_" << time << "_" << fctGrp.name(fi);
+
+		// create if first time step, append otherwise
+		std::ofstream outFile;
+		outFile.precision(std::numeric_limits<number>::digits10);
+		outFile.open(ofnss.str().c_str(), std::ios_base::out);
+		if (!outFile.is_open())
+			UG_THROW("Output file '" << ofnss.str() << "' could not be opened.")
+
+		try
+		{
+			// loop subsets
+			for (size_t si = 0; si < ssGrp.size(); si++)
+			{
+				if (domain_type::dim-1 >= VERTEX && dofDistr->max_fct_dofs(fctGrp[fi], VERTEX, ssGrp[si]) > 0)
+					exportSolution<TGridFunction, Vertex>(solution, ssGrp[si], fctGrp[fi], outFile);
+				if (domain_type::dim-1 >= EDGE && dofDistr->max_fct_dofs(fctGrp[fi], EDGE, ssGrp[si]) > 0)
+					exportSolution<TGridFunction, Edge>(solution, ssGrp[si], fctGrp[fi], outFile);
+				if (domain_type::dim-1 >= FACE && dofDistr->max_fct_dofs(fctGrp[fi], FACE, ssGrp[si]) > 0)
+					exportSolution<TGridFunction, Face>(solution, ssGrp[si], fctGrp[fi], outFile);
+				if (domain_type::dim-1 >= VOLUME && dofDistr->max_fct_dofs(fctGrp[fi], VOLUME, ssGrp[si]) > 0)
+					exportSolution<TGridFunction, Volume>(solution, ssGrp[si], fctGrp[fi], outFile);
+			}
+		}
+		UG_CATCH_THROW("Output file '" << ofnss.str() << "' could not be written to.");
+
+		outFile.close();
+	}
+
+	return;
+}
+
+
+
+// /////////////////////// //
+// import solution command //
+// /////////////////////// //
+
+// helper function
+template <typename TGridFunction, typename TBaseElem>
+void importSolution
+(
+	SmartPtr<TGridFunction> solution,
+	size_t si,
+	size_t fi,
+	const Mapper<TGridFunction::domain_type::dim, number>& mapper
+)
+{
+	typedef typename TGridFunction::domain_type domain_type;
+
+	// retrieve domain and dofDistr from approxSpace
+	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
+	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
+	const LFEID lfeid = dofDistr->lfeid(fi);
+
+	//	get elem iterator for current subset and elem type
+	typedef typename DoFDistribution::traits<TBaseElem>::const_iterator itType;
+	itType iter = dofDistr->template begin<TBaseElem>(si);
+	itType iterEnd = dofDistr->template end<TBaseElem>(si);
+
+	// loop over all elems
+	for (; iter != iterEnd; ++iter)
+	{
+		// get current vertex
+		TBaseElem* elem = *iter;
+
+		// get coords
+		std::vector<typename domain_type::position_type> coords;
+		InnerDoFPosition<domain_type>(coords, elem, *domain, lfeid);
+
+		// get multi-indices
+		std::vector<DoFIndex> multInd;
+		dofDistr->inner_dof_indices(elem, fi, multInd);
+
+		UG_ASSERT(coords.size() == multInd.size(), "#DoF mismatch");
+
+		// get values of DoFs
+		number val;
+		size_t nDof = multInd.size();
+		for (size_t dof = 0; dof < nDof; ++dof)
+		{
+			// get value from provider
+			try {val = mapper.get_data_from_nearest_neighbor(coords[dof]);}
+			UG_CATCH_THROW("No value could be retrieved for DoF at " << coords[dof]);
+
+			DoFRef(*solution, multInd[dof]) = val;
+		}
+	}
+}
+
+template <typename TGridFunction>
+void importSolution
+(
+	SmartPtr<TGridFunction> solution,
+	const char* subsetNames,
+	const char* functionNames,
+	const char* inFileBaseName
+)
+{
+	typedef typename TGridFunction::domain_type domain_type;
+	typedef typename domain_type::position_type pos_type;
+
+	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
+	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
+
+	// get subset group to be measured on
+	SubsetGroup ssGrp;
+	if (!*subsetNames)
+	{
+		ssGrp.set_subset_handler(dofDistr->subset_handler());
+		ssGrp.add_all();
+	}
+	else
+	{
+		try {ssGrp = dofDistr->subset_grp_by_name(subsetNames);}
+		UG_CATCH_THROW("At least one of the subsets in '" << subsetNames
+				<< "' is not contained in the approximation space (or something else was wrong).");
+	}
+
+	// get function group to be measured (if none provided: take all)
+	FunctionGroup fctGrp;
+	if (!*functionNames)
+	{
+		fctGrp.set_function_pattern(dofDistr->function_pattern());
+		fctGrp.add_all();
+	}
+	else
+	{
+		try {fctGrp = dofDistr->fct_grp_by_name(functionNames);}
+		UG_CATCH_THROW("At least one of the functions in '" << functionNames
+						<< "' is not contained in the approximation space (or something else was wrong).");
+	}
+
+
+	// loop functions
+	for (size_t fi = 0; fi < fctGrp.size(); fi++)
+	{
+		// construct inFile name
+		std::ostringstream ofnss(inFileBaseName, std::ios_base::app);
+		ofnss << "_" << fctGrp.name(fi);
+
+		// read values from file and fill mapper structure with it
+		Mapper<domain_type::dim, number> valueProvider;
+		try {valueProvider.build_tree(ofnss.str(), " ");}
+		UG_CATCH_THROW("Underlying mapper object could not build its tree "
+					   "on given file (" << ofnss.str() << ").");
+
+		// loop subsets
+		for (size_t si = 0; si < ssGrp.size(); si++)
+		{
+			if (domain_type::dim-1 >= VERTEX && dofDistr->max_fct_dofs(fctGrp[fi], VERTEX, ssGrp[si]) > 0)
+				importSolution<TGridFunction, Vertex>(solution, ssGrp[si], fctGrp[fi], valueProvider);
+			if (domain_type::dim-1 >= EDGE && dofDistr->max_fct_dofs(fctGrp[fi], EDGE, ssGrp[si]) > 0)
+				importSolution<TGridFunction, Edge>(solution, ssGrp[si], fctGrp[fi], valueProvider);
+			if (domain_type::dim-1 >= FACE && dofDistr->max_fct_dofs(fctGrp[fi], FACE, ssGrp[si]) > 0)
+				importSolution<TGridFunction, Face>(solution, ssGrp[si], fctGrp[fi], valueProvider);
+			if (domain_type::dim-1 >= VOLUME && dofDistr->max_fct_dofs(fctGrp[fi], VOLUME, ssGrp[si]) > 0)
+				importSolution<TGridFunction, Volume>(solution, ssGrp[si], fctGrp[fi], valueProvider);
+		}
+	}
 }
 
 
