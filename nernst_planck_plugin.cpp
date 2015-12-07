@@ -11,11 +11,14 @@
 #include "nernst_planck_util.h"
 #include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
-#include "constrained_ilu.h"
 #include "interface1d_fv.h"
 #include "pnp1d_fv1.h"
 #include "pnp1d_fv.h"
 #include "vtk_export_ho.h"
+
+#include "constrained_preconditioner.h"
+#include "lib_algebra/operator/preconditioner/ilu.h"
+#include "lib_algebra/operator/preconditioner/ilut.h"
 
 using namespace std;
 using namespace ug::bridge;
@@ -135,20 +138,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
 	}
 
-	// ILUC preconditioner
-	{
-		typedef ILUC<TDomain, TAlgebra> T;
-		typedef IPreconditioner<TAlgebra> TBase;
-		string name = string("ILUC").append(suffix);
-		reg.add_class_<T,TBase>(name, grp, "Incomplete LU Decomposition respecting constraints")
-		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
-			.add_method("set_beta", &T::set_beta, "", "beta")
-			.add_method("set_sort", &T::set_sort, "", "bSort", "if bSort=true, use a cuthill-mckey sorting to reduce fill-in. default false")
-			.add_method("add_constraint", &T::add_constraint, "", "constraint")
-			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "ILUC", tag);
-	}
-
 	// vtk export for higher order grid functions
 	{
 		reg.add_function("vtk_export_ho",
@@ -163,6 +152,30 @@ static void DomainAlgebra(Registry& reg, string grp)
 				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
 			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
 			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
+	}
+
+	// constrained preconditioners
+	{
+		typedef ConstrainedPreconditioner<TDomain, TAlgebra, ILU> T;
+		typedef ILU<TAlgebra> TBase;
+		string name = string("ILUC").append(suffix);
+		reg.add_class_<T,TBase>(name, grp, "ILU preconditioner respecting constraints")
+		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
+			.add_method("add_constraint", &T::add_constraint, "", "constraint")
+			.add_method("set_time", &T::set_time, "", "time")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "ILUC", tag);
+	}
+	{
+		typedef ConstrainedPreconditioner<TDomain, TAlgebra, ILUTPreconditioner> T;
+		typedef ILUTPreconditioner<TAlgebra> TBase;
+		string name = string("ILUTC").append(suffix);
+		reg.add_class_<T,TBase>(name, grp, "ILUT preconditioner respecting constraints")
+		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
+			.add_method("add_constraint", &T::add_constraint, "", "constraint")
+			.add_method("set_time", &T::set_time, "", "time")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "ILUTC", tag);
 	}
 }
 
