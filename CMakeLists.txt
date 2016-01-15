@@ -21,16 +21,11 @@ set(SOURCES nernst_planck_plugin.cpp
    )
 
 
-
-# store libs to be linked against here
-set(linkLibraries)
-
 if(buildEmbeddedPlugins)
 	# add the sources to ug4's sources
 	EXPORTSOURCES(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
-	#exportDependencies(${ANN_LIBRARY})
 else(buildEmbeddedPlugins)
 	# create a shared library from the sources and link it against ug4 and external libraries
 	add_library(nernst_planck SHARED ${SOURCES})
-	target_link_libraries(nernst_planck ug4 ${linkLibraries})
+	target_link_libraries(nernst_planck ug4)
 endif(buildEmbeddedPlugins)

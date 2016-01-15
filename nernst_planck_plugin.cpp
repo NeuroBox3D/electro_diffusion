@@ -16,9 +16,6 @@
 #include "pnp1d_fv.h"
 #include "vtk_export_ho.h"
 
-#include "constrained_preconditioner.h"
-#include "lib_algebra/operator/preconditioner/ilu.h"
-#include "lib_algebra/operator/preconditioner/ilut.h"
 
 using namespace std;
 using namespace ug::bridge;
@@ -55,6 +52,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 	string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
 	string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
 
+	typedef typename TAlgebra::vector_type vector_type;
 	typedef GridFunction<TDomain, TAlgebra> TGridFunction;
 
 	// write residuals to file function for param optimization
@@ -154,29 +152,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
 
-	// constrained preconditioners
-	{
-		typedef ConstrainedPreconditioner<TDomain, TAlgebra, ILU> T;
-		typedef ILU<TAlgebra> TBase;
-		string name = string("ILUC").append(suffix);
-		reg.add_class_<T,TBase>(name, grp, "ILU preconditioner respecting constraints")
-		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
-			.add_method("add_constraint", &T::add_constraint, "", "constraint")
-			.add_method("set_time", &T::set_time, "", "time")
-			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "ILUC", tag);
-	}
-	{
-		typedef ConstrainedPreconditioner<TDomain, TAlgebra, ILUTPreconditioner> T;
-		typedef ILUTPreconditioner<TAlgebra> TBase;
-		string name = string("ILUTC").append(suffix);
-		reg.add_class_<T,TBase>(name, grp, "ILUT preconditioner respecting constraints")
-		.template add_constructor<void (*)(ConstSmartPtr<ApproximationSpace<TDomain> >)>("approximation space")
-			.add_method("add_constraint", &T::add_constraint, "", "constraint")
-			.add_method("set_time", &T::set_time, "", "time")
-			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "ILUTC", tag);
-	}
 }
 
 /**
@@ -288,7 +263,6 @@ static void Algebra(Registry& reg, string grp)
 {
 	string suffix = GetAlgebraSuffix<TAlgebra>();
 	string tag = GetAlgebraTag<TAlgebra>();
-
 }
 
 /**
@@ -340,7 +314,7 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 
 	try{
 		RegisterCommon<Functionality>(*reg,grp);
-		RegisterDimensionDependent<Functionality>(*reg,grp);
+		//RegisterDimensionDependent<Functionality>(*reg,grp);
 		RegisterDomainDependent<Functionality>(*reg,grp);
 		//RegisterAlgebraDependent<Functionality>(*reg,grp);
 		RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
