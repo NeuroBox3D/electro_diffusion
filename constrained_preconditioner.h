@@ -34,14 +34,8 @@ class ConstrainedPreconditioner : public TPrecond<TAlgebra>
 		typedef typename TAlgebra::vector_type vector_type; ///< vector type
 		typedef typename TAlgebra::matrix_type matrix_type; ///< matrix type
 		typedef typename IPreconditioner<TAlgebra>::matrix_operator_type matrix_operator_type; ///< matrix operator type
+		typedef GridFunction<TDomain, TAlgebra> gf_type;
 		typedef TPrecond<TAlgebra> base_type; ///< base type
-
-	/*
-	protected:
-		using base_type::set_debug;
-		using base_type::debug_writer;
-		using base_type::write_debug;
-	*/
 
 	public:
 		///	constructor
@@ -85,9 +79,18 @@ class ConstrainedPreconditioner : public TPrecond<TAlgebra>
 			// apply constraints
 			try
 			{
-				if (m_spDD.valid())
+				gf_type* gf = dynamic_cast<gf_type*>(&c);
+				if (gf && gf->dof_distribution().valid())
+				{
+					for (size_t i = 0; i < m_vConstraint.size(); i++)
+						m_vConstraint[i]->adjust_solution(c, gf->dof_distribution(), m_time);
+				}
+				else if (m_spDD.valid())
+				{
+					UG_LOGN("No DoF distribution found. Using surface DoF distribution.");
 					for (size_t i = 0; i < m_vConstraint.size(); i++)
 						m_vConstraint[i]->adjust_solution(c, m_spDD, m_time);
+				}
 				else
 					UG_THROW("DoF distribution is not valid.")
 			} UG_CATCH_THROW(" Cannot adjust solution.");
