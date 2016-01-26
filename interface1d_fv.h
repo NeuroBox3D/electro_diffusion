@@ -303,6 +303,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 			number time = 0.0
 		);
 
+
 	protected:
 		/// called when the approximation space has changed
 		void approximation_space_changed();
@@ -711,6 +712,21 @@ class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 
 		/// destructor
 		virtual ~MultiplicativeInterface1D() {};
+
+
+
+		// inherited from IConstraint
+
+		///	adapts correction to enforce constraints
+		virtual void adjust_correction(vector_type& c, ConstSmartPtr<DoFDistribution> dd,
+									   number time = 0.0)
+		{
+			UG_THROW("MultiplicativeInterface1D: The adjust_correction method cannot be "
+					 "implemented in a meaningful way.\nNonlinear constraints have to be enforced "
+					 "in the solution, not the correction.\nThis is not supported in the "
+					 "current interface for linear iterators.");
+		}
+
 
 		// inherited from IInterface1D
 
