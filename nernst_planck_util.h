@@ -110,6 +110,59 @@ void importSolution
 );
 
 
+#if 0
+// does not work: would (at least) need implementation of TestLayout for multi_level_layout_tag
+#ifdef UG_PARALLEL
+#include "lib_algebra/parallelization/parallelization_util.h"
+#include "pcl/pcl_layout_tests.h"
+
+struct VertexCoordinate
+{
+	VertexCoordinate(SmartPtr<MultiGrid> mg, size_t dim)
+	{
+		m_mg = mg;
+		m_dim = dim;
+	}
+
+	number operator() (const Vertex& v)
+	{
+		Grid::VertexAttachmentAccessor<APosition> aaPos(*m_mg, aPosition);
+		return aaPos[&v][m_dim];
+	}
+
+	SmartPtr<MultiGrid> m_mg;
+	size_t m_dim;
+};
+
+
+template <typename TDomain>
+void TestPositions(SmartPtr<TDomain> dom)
+{
+	SmartPtr<MultiGrid> mg = dom->grid();
+	pcl::InterfaceCommunicator<VertexLayout> intfCom;
+	DistributedGridManager& dgm = *mg->distributed_grid_manager();
+	GridLayoutMap& glm = dgm.grid_layout_map();
+	VertexLayout* master_layout;
+	VertexLayout* slave_layout;
+
+	if (glm.has_layout<Vertex>(INT_H_SLAVE))
+		master_layout = &glm.get_layout<Vertex>(INT_H_SLAVE);
+	if (glm.has_layout<Vertex>(INT_H_MASTER))
+		slave_layout = &glm.get_layout<Vertex>(INT_H_MASTER);
+
+
+	for (size_t cmp = 0; cmp < TDomain::dim; ++cmp)
+	{
+		if (!pcl::TestLayout<VertexLayout, number>(pcl::ProcessCommunicator(), intfCom,
+                *master_layout, *slave_layout, false, VertexCoordinate(mg, cmp), true))
+		{
+			UG_LOGN("Something went wrong.");
+		}
+	}
+}
+
+#endif
+#endif
 
 } // namspace calciumDynamics
 } // namespace ug

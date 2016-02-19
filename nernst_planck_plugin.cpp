@@ -230,6 +230,8 @@ static void Domain(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP1D_FV", tag);
 	}
+
+	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
 
 /**
