@@ -90,11 +90,6 @@ namespace nernst_planck{
 template <typename TDomain>
 class PNP1D_FV1: public IElemDisc<TDomain>
 {
-        protected:
-		const number R;		// universal gas constant
-		const number T;		// temperature
-		const number F;		// Faraday constant
-
 	public:
 		typedef PNP1D_FV1<TDomain> this_type;
 
@@ -231,6 +226,9 @@ class PNP1D_FV1: public IElemDisc<TDomain>
 		/// set constant dendritic radius
 		void set_dendritic_radius(const number r);
 
+		/// set constants R, T, F
+		void set_rtf(number R, number T, number F);
+
 		/// set represented dimensionality
 		void set_represented_dimension(size_t dim);
 
@@ -273,6 +271,15 @@ class PNP1D_FV1: public IElemDisc<TDomain>
 
 		/// membrane thickness
 		number m_mem_thickness;
+
+		/// universal gas constant
+    	number m_R;
+
+    	/// temperature
+    	number m_T;
+
+    	/// Faraday constant
+		number m_F;
 
 		/// represented dimension (default: 3)
 		size_t m_reprDim;

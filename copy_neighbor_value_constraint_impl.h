@@ -10,7 +10,7 @@
 namespace ug{
 namespace nernst_planck{
 
-
+#if 0
 template <typename TDomain, typename TAlgebra>
 CopyNeighborValueConstraint<TDomain, TAlgebra>::CopyNeighborValueConstraint
 (
@@ -228,6 +228,7 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_jacobian
 (	matrix_type& J,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
+	int type,
 	number time,
 	ConstSmartPtr<VectorTimeSeries<vector_type> > vSol,
 	const number s_a0
@@ -268,6 +269,7 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_defect
 (	vector_type& d,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
+	int type,
 	number time,
 	ConstSmartPtr<VectorTimeSeries<vector_type> > vSol,
 	const std::vector<number>* vScaleMass,
@@ -292,6 +294,7 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_linear
 (	matrix_type& mat,
 	vector_type& rhs,
 	ConstSmartPtr<DoFDistribution> dd,
+	int type,
 	number time
 )
 {
@@ -306,10 +309,11 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_rhs
 (	vector_type& rhs,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
+	int type,
 	number time
 )
 {
-	UG_THROW("This feature is deactivated in order to test, whether it is needed in the first place.");
+	UG_THROW("This feature is not implemented.");
 }
 
 
@@ -319,6 +323,7 @@ template <typename TDomain, typename TAlgebra>
 void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_solution
 (	vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
+	int type,
 	number time
 )
 {
@@ -341,6 +346,210 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_solution
 		size_t constrgInd = constraintMapIt->second;
 
 		u[constrdInd] = u[constrgInd];
+	}
+}
+
+#endif
+
+
+
+template <typename TDomain, typename TAlgebra>
+void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
+set_sorting_direction(std::vector<number> vDir)
+{
+	UG_COND_THROW(vDir.size() < TDomain::dim, "Given sorting direction does not have enough components.");
+
+	for (size_t i = 0; i < worldDim; ++i)
+		m_sortDir[i] = vDir[i];
+}
+
+
+template <typename TDomain, typename TAlgebra>
+void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
+adjust_solution(SmartPtr<GridFunction<TDomain, TAlgebra> > u)
+{
+	// translate subset names to indices
+	SubsetGroup ssg(u->approx_space()->subset_handler(), m_vConstrdNames);
+	m_vConstrdSI = ssg.index_vector();
+	ssg.clear();
+	ssg.add(m_vConstrgNames);
+	m_vConstrgSI = ssg.index_vector();
+
+	// make sure sorting direction is normalized
+	VecNormalize(m_sortDir, m_sortDir);
+
+	// resize data points vector
+	ConstSmartPtr<DoFDistribution> dd = u->dof_distribution();
+	m_vDataPoints.clear();
+	m_vDataPoints.resize(dd->num_fct());
+
+	// collect constraining points
+	if (dd->max_dofs(VERTEX)) collect_constrainers<Vertex>(u);
+	if (dd->max_dofs(EDGE)) collect_constrainers<Edge>(u);
+
+	// sort constrainer points
+	typename DataPoint::CompareFunction mcf;
+	for (size_t fct = 0; fct < m_vDataPoints.size(); ++fct)
+	std::sort(m_vDataPoints[fct].begin(), m_vDataPoints[fct].end(), mcf);
+
+	// query NN  for all constrained DoFs (log search)
+	if (dd->max_dofs(VERTEX)) adjust_constrained<Vertex>(u);
+	if (dd->max_dofs(EDGE)) adjust_constrained<Edge>(u);
+	if (dd->max_dofs(FACE)) adjust_constrained<Face>(u);
+	if (dd->max_dofs(VOLUME)) adjust_constrained<Volume>(u);
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TBaseElem>
+void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
+collect_constrainers(SmartPtr<GridFunction<TDomain, TAlgebra> > u)
+{
+	ConstSmartPtr<DoFDistribution> dd = u->dof_distribution();
+
+	// loop constraining subsets
+	for (size_t i = 0; i < m_vConstrgSI.size(); ++i)
+	{
+		int si = m_vConstrgSI[i];
+
+		// loop constraining elements
+		typename DoFDistribution::traits<TBaseElem>::const_iterator iter, iterEnd;
+		iter = dd->begin<TBaseElem>(si);
+		iterEnd = dd->end<TBaseElem>(si);
+
+		for (; iter != iterEnd; ++iter)
+		{
+			// get constrained elem
+			TBaseElem* constrg = *iter;
+
+			// loop functions
+			size_t numFct = dd->num_fct();
+			for (size_t fct = 0; fct < numFct; fct++)
+			{
+				if (!dd->is_def_in_subset(fct, si)) continue;
+
+				// get inner DoF indices
+				std::vector<DoFIndex> constrgInd;
+				dd->inner_dof_indices(constrg, fct, constrgInd, false);
+
+				// get corresponding positions
+				std::vector<MathVector<worldDim> > globPos;
+				InnerDoFPosition<TDomain>(globPos, constrg, *u->domain(), dd->lfeid(fct));
+
+				// loop all DoFs
+				size_t nDof = constrgInd.size();
+				UG_COND_THROW(globPos.size() != nDof, "#DoF mismatch");
+
+				for (size_t d = 0; d < nDof; ++d)
+				{
+					// use scalar product with sorting direction as 1d coordinate
+					number coord = VecProd(globPos[d], m_sortDir);
+
+					// get solution value at dof
+					number val = DoFRef(*u, constrgInd[d]);
+
+					// push back data point
+					m_vDataPoints[fct].push_back(DataPoint(coord, val));
+				}
+			}
+		}
+	}
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TBaseElem>
+void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
+adjust_constrained(SmartPtr<GridFunction<TDomain, TAlgebra> > u)
+{
+	ConstSmartPtr<DoFDistribution> dd = u->dof_distribution();
+
+	// loop constrained subsets
+	for (size_t i = 0; i < m_vConstrdSI.size(); ++i)
+	{
+		int si = m_vConstrdSI[i];
+
+		// loop constrained elements
+		typename DoFDistribution::traits<TBaseElem>::const_iterator iter, iterEnd;
+		iter = dd->begin<TBaseElem>(si);
+		iterEnd = dd->end<TBaseElem>(si);
+
+		for (; iter != iterEnd; ++iter)
+		{
+			// get constrained elem
+			TBaseElem* constrd = *iter;
+
+			// loop functions
+			size_t numFct = dd->num_fct();
+			for (size_t fct = 0; fct < numFct; fct++)
+			{
+				if (!dd->is_def_in_subset(fct, si)) continue;
+
+				// get inner DoF indices
+				std::vector<DoFIndex> constrdInd;
+				dd->inner_dof_indices(constrd, fct, constrdInd, false);
+
+				// get corresponding positions
+				std::vector<MathVector<worldDim> > globPos;
+				InnerDoFPosition<TDomain>(globPos, constrd, *u->domain(), dd->lfeid(fct));
+
+				// loop all DoFs
+				size_t nDof = constrdInd.size();
+				UG_COND_THROW(globPos.size() != nDof, "#DoF mismatch");
+
+				for (size_t d = 0; d < nDof; ++d)
+				{
+					// use scalar product with sorting direction as 1d coordinate
+					number coord = VecProd(globPos[d], m_sortDir);
+
+					// get solution value at dof
+					number& val = DoFRef(*u, constrdInd[d]);
+
+					// find nearest neighbor
+					std::vector<DataPoint>& vDP = m_vDataPoints[fct];
+					size_t nDP = vDP.size();
+
+					UG_COND_THROW(!nDP, "No constrainers available.");
+
+					// treat special case with only one constrainer
+					if (nDP == 1)
+					{
+						val = vDP[0].m_val;
+						continue;
+					}
+
+					// first step: we start with a correctly sized left side of the array
+					size_t step = 1;
+					while (step < nDP) step = step << 1;
+					size_t curr = step >> 1;
+					step = step >> 2;
+
+					// if we get into the right side in our search:
+					// add as many elements from the left side as necessary to achieve correct size
+					if (vDP[curr].m_coord < coord)
+						curr = nDP - curr + step;
+					else if (vDP[curr-1].m_coord > coord)
+						curr -= step;
+					else step = 1; // artificially stop as we have found the correct position
+
+					while ((step = step >> 1))
+					{
+						if (vDP[curr].m_coord < coord)	// enter right part
+							curr += step;
+						else if (vDP[curr-1].m_coord > coord)	// enter left part
+							curr -= step;
+						else step = 1;
+					}
+
+					// we are now in between the correct elements
+					// compare left and right and decide
+					if (coord - vDP.at(curr-1).m_coord < vDP.at(curr).m_coord - coord)
+						val = vDP.at(curr-1).m_val;
+					else
+						val = vDP.at(curr).m_val;
+				}
+			}
+		}
 	}
 }
 

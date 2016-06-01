@@ -14,13 +14,26 @@
 #include <vector>
 
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"	// IDomainConstraint
-#include "lib_disc/spatial_disc/local_to_global/local_to_global_mapper.h" // ILocalToGlobalMapper
+//#include "lib_disc/spatial_disc/local_to_global/local_to_global_mapper.h" // ILocalToGlobalMapper
 #include "lib_disc/assemble_interface.h"	// IAssemble
 #include "lib_disc/dof_manager/orientation.h"	// MapLagrangeMultiIndexTriangle etc.
 
 
 namespace ug{
 namespace nernst_planck{
+
+/// Algebra- and domain-less interface for algebra- and domain-dependent interface template classes
+class IInterface1D
+{
+	public:
+		virtual ~IInterface1D() {};
+		virtual GridObject* get_constrainer_object(GridObject* constrd) = 0;
+		virtual int constrained_subset_index() = 0;
+		virtual int intf_node_hd_subset_index() = 0;
+		virtual int intf_node_1d_subset_index() = 0;
+};
+
+
 
 /// Interface class for coupling high-dimensional (2D/3D) discretizations with 1D simplifications.
 /**
@@ -159,10 +172,12 @@ namespace nernst_planck{
  * \author mbreit
  */
 
-
 template <typename TDomain, typename TAlgebra>
-class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
+class Interface1D
+	: public IDomainConstraint<TDomain, TAlgebra>,
+	  public IInterface1D
 {
+	#if 0
 	public:
 		// nested class for mapping local "shadow" DoFs to global 1D interface DoF
 		class Interface1DMapper : public ILocalToGlobalMapper<TAlgebra>
@@ -178,7 +193,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 				typedef typename algebra_type::vector_type vector_type;
 
 				/// type of the interface
-				typedef IInterface1D<TDomain,TAlgebra> interface_type;
+				typedef Interface1D<TDomain,TAlgebra> interface_type;
 
 			public:
 				///	default constructor
@@ -206,9 +221,11 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 	// make private members accessible for mapper class (esp. for accessing index values)
 	friend class Interface1DMapper;
 
+	#endif
+
 	public:
 		/// own type
-		typedef IInterface1D<TDomain, TAlgebra> this_type;
+		typedef Interface1D<TDomain, TAlgebra> this_type;
 
 		/// world dimension
 		static const int worldDim = TDomain::dim;
@@ -236,11 +253,12 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		 * @param high_dim_intfNode	the name of the subset of the high-dim interface node
 		 * @param one_dim_intfNode	the name of the subset of the one-dim interface node
 		 */
-		IInterface1D(const char* fcts, const char* constrained,
-						const char* high_dim_intfNode, const char* one_dim_intfNode);
+		Interface1D(const char* fcts, const char* constrained,
+					 const char* high_dim_intfNode, const char* one_dim_intfNode,
+					 std::vector<number> dir);
 
 		/// destructor
-		virtual ~IInterface1D();
+		virtual ~Interface1D();
 
 
 	// inherited methods (from IConstraint)
@@ -264,6 +282,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		(	matrix_type& J,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0,
 			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
 			const number s_a0 = 1.0
@@ -274,6 +293,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		(	vector_type& d,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0,
 			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
 			const std::vector<number>* vScaleMass = NULL,
@@ -285,6 +305,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		(	matrix_type& mat,
 			vector_type& rhs,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
@@ -293,6 +314,7 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		(	vector_type& rhs,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
@@ -300,9 +322,48 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		virtual void adjust_solution
 		(	vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
+		///	sets the constraints in a solution vector
+		virtual void adjust_correction
+		(	vector_type& u,
+			ConstSmartPtr<DoFDistribution> dd,
+			int type,
+			number time = 0.0
+		);
+
+		/*
+		///	sets the constraints in a solution vector
+		virtual void adjust_restriction
+		(
+			vector_type& uCoarse,
+			GridLevel coarseLvl,
+			const vector_type& uFine,
+			GridLevel fineLvl
+		);
+		 */
+
+		/// sets constraints in prolongation
+		virtual void adjust_prolongation
+		(
+			matrix_type& P,
+			ConstSmartPtr<DoFDistribution> ddFine,
+			ConstSmartPtr<DoFDistribution> ddCoarse,
+			int type,
+			number time = 0.0
+		);
+
+		/// sets constraints in restriction
+		virtual void adjust_restriction
+		(
+			matrix_type& R,
+			ConstSmartPtr<DoFDistribution> ddCoarse,
+			ConstSmartPtr<DoFDistribution> ddFine,
+			int type,
+			number time = 0.0
+		);
 
 	protected:
 		/// called when the approximation space has changed
@@ -311,6 +372,31 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 	public:
 		/// update constraint index information
 		void update();
+
+		/// update constraint index info for specific dof distro
+		void update(ConstSmartPtr<DoFDistribution> dd);
+
+		// inherited from IInterface1D
+		virtual GridObject* get_constrainer_object(GridObject* constrd);
+
+		virtual int constrained_subset_index()
+		{
+			UG_COND_THROW(m_siConstr < 0, "Constrained subset index requested but invalid.");
+			return m_siConstr;
+		}
+
+		virtual int intf_node_hd_subset_index()
+		{
+			UG_COND_THROW(m_siIntf[0] < 0, "High-dim interface node subset index requested but invalid.");
+			return m_siIntf[0];
+		}
+
+		virtual int intf_node_1d_subset_index()
+		{
+			UG_COND_THROW(m_siIntf[1] < 0, "1d interface node subset index requested but invalid.");
+			return m_siIntf[1];
+		}
+
 
 	public:
 		// methods to be implemented by a specialization of this interface
@@ -360,23 +446,38 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 
 	public:
 		/// struct containing information about the dependencies of a constrained index
-		struct ConstraintInfo
+		struct ConstrainerInfo
 		{
 			public:
 
 			/// default constructor
-			ConstraintInfo()
-				: constrgInd(0), fct(0){};
+			ConstrainerInfo()
+				: constrgInd(0), constrainerIsHanging(false), fct(0){};
 
 			/// custom constructor
-			ConstraintInfo(size_t _constrgInd, size_t _fct)
-				: constrgInd(_constrgInd), fct(_fct) {};
+			ConstrainerInfo(size_t _constrgInd, bool hanging, size_t _fct)
+				: constrgInd(_constrgInd), constrainerIsHanging(hanging), fct(_fct) {};
 
 			/// the constraining index
 			size_t constrgInd;
 
+			/// whether the constrainer is hanging
+			bool constrainerIsHanging;
+
 			/// the function this constrained index belongs to (relative to fcts given to this class)
 			size_t fct;
+		};
+
+		struct ConstraintInfo
+		{
+			public:
+			/// algebraic indices for the interface nodes (and all functions)
+			// [0] MUST contain the index of the interface node for the high-dim. end;
+			// [1] the index of the interface node for the 1d end
+			std::vector<size_t> algInd[2];
+
+			/// algebraic indices of constrained nodes and their respective constrainers
+			std::map<size_t, ConstrainerInfo> constrainerMap;
 		};
 
 	private:
@@ -449,6 +550,21 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		};
 		/// @}
 
+
+		/// computes the constrainer of a constrained element
+		/**
+		 *  The element can be any type of element contained in the constrained subset.
+		 *  Its constrainer is defined as the unique element of the same type and same
+		 *  dimension (dim) such that there is a base element of dimension (dim+1) not
+		 *  contained in the constrained subsets which connects constrained and constraining
+		 *  element.
+		 *
+		 *  This method is used when the constraintMap is being filled.
+		 */
+		template <typename TElem, typename TContainingElem>
+		TElem* get_constrainer(TElem* constrd);
+
+#if 0
 		/// computes the constrainer of a constrained element
 		/**
 		 *  The element can be any type of element contained in the constrained subset.
@@ -468,16 +584,17 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy = void>
 		struct GetConstrainer
 		{
-			GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElem** constrg_out);
+			GetConstrainer(Interface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElem** constrg_out);
 		};
 		template <typename TDummy>
 		struct GetConstrainer<Vertex, Vertex, Edge, TDummy>
 		{
-			GetConstrainer(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out);
+			GetConstrainer(Interface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out);
 		};
 		/// @}
 		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy>
 		friend struct GetConstrainer;
+#endif
 
 		/// computes the target descriptor for a constrained element
 		/**
@@ -500,17 +617,17 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		template <typename TElem, typename TElemDesc, typename TDummy = void>
 		struct TargetDescriptor
 		{
-			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElemDesc& desc);
+			TargetDescriptor(Interface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElemDesc& desc);
 		};
 		template <typename TDummy>
 		struct TargetDescriptor<Vertex, Vertex, TDummy>
 		{
-			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex& desc);
+			TargetDescriptor(Interface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex& desc);
 		};
 		template <typename TDummy>
 		struct TargetDescriptor<Edge, EdgeDescriptor, TDummy>
 		{
-			TargetDescriptor(IInterface1D<TDomain, TAlgebra>* const intf, Edge* constrd, EdgeDescriptor& desc);
+			TargetDescriptor(Interface1D<TDomain, TAlgebra>* const intf, Edge* constrd, EdgeDescriptor& desc);
 		};
 		/// @}
 		template <typename TElem, typename TElemDesc, typename TDummy>
@@ -518,37 +635,25 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 
 		/// fill the constraintMap with inner indices of a specific element type
 		template <typename TElem, typename TElemDesc, typename TContainingElem>
-		void fill_constraint_map();
+		void fill_constrainer_map(ConstSmartPtr<DoFDistribution> dd);
 
 		/// fill the constraintMap
 		/**
-		 *  After a call to this method, the constraintMap will contain any algebra index
+		 *  After a call to this method, the constrainerMaps will contain any algebra index
 		 *  that belongs to the constrained subset as a key to an info struct containing
 		 *  (a) its constraining algebra index,
 		 *  (b) the function index this index belongs to.
 		 *
-		 *  The map is filled per element type containg indices using
-		 *  template <typename TElem, typename TElemDesc, typename TContainingElem> void fill_constraint_map().
+		 *  The map is filled for each DoF distribution and per element type using
+		 *  template <typename TElem, typename TElemDesc, typename TContainingElem> void fill_constrainer_map().
 		 */
-		void fill_constraint_map();
+		void fill_constrainer_map(ConstSmartPtr<DoFDistribution> dd);
 
 	protected:
 		/// constrained functions
 		std::vector<size_t> m_vFct;
 		std::vector<std::string> m_vsFct;
 		std::map<size_t, size_t> m_fctIndexMapper;
-
-		/*
-		/// subset index of extension domain
-		int m_ssiExt;
-		std::string m_sssiExt;
-		*/
-
-		/*
-		/// subset index of 2d interface node
-		int m_ssiIN;
-		std::string m_sssiIN;
-		*/
 
 		/// subset indices of constrained vertices
 		int m_siConstr;
@@ -560,23 +665,14 @@ class IInterface1D: public IDomainConstraint<TDomain, TAlgebra>
 		int m_siIntf[2];
 		std::string m_ssiIntf[2];
 
-		/// algebraic indices for the interface nodes (and all functions)
-		// [0] MUST contain the index of the interface node for the high-dim. end;
-		// [1] the index of the interface node for the 1d end
-		std::vector<size_t> m_algInd[2];
+		MathVector<worldDim> m_direction;
 
-		/// solution values at the interface nodes (for all functions)
-		// [0] MUST contain the values at the interface node for the high-dim. end;
-		// [1] the values at the interface node for the 1d end
-		std::vector<number> m_intf_val[2];
-
-		/// algebraic indices of constrained nodes and their respective constrainers
-		std::map<size_t, ConstraintInfo> m_constraintMap;
+		std::map<const DoFDistribution*, ConstraintInfo> m_mConstraints;
 };
 
 
 template <typename TDomain, typename TAlgebra>
-class AdditiveInterface1D : public IInterface1D<TDomain, TAlgebra>
+class AdditiveInterface1D : public Interface1D<TDomain, TAlgebra>
 {
 	public:
 		///	type of algebra vector
@@ -589,16 +685,17 @@ class AdditiveInterface1D : public IInterface1D<TDomain, TAlgebra>
 			const char* fcts,
 			const char* constrained,
 			const char* high_dim_intfNode,
-			const char* one_dim_intfNode
+			const char* one_dim_intfNode,
+			std::vector<number> dir
 		)
-	 	: IInterface1D<TDomain, TAlgebra>
-		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
+	 	: Interface1D<TDomain, TAlgebra>
+		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode, dir)
 		{}
 
 		/// destructor
 		virtual ~AdditiveInterface1D() {};
 
-		// inherited from IInterface1D
+		// inherited from Interface1D
 
 		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue
@@ -691,7 +788,7 @@ class AdditiveInterface1D : public IInterface1D<TDomain, TAlgebra>
 
 
 template <typename TDomain, typename TAlgebra>
-class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
+class MultiplicativeInterface1D: public Interface1D<TDomain, TAlgebra>
 {
 	public:
 		///	type of algebra vector
@@ -704,10 +801,11 @@ class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 			const char* fcts,
 			const char* constrained,
 			const char* high_dim_intfNode,
-			const char* one_dim_intfNode
+			const char* one_dim_intfNode,
+			std::vector<number> dir
 		)
-		: IInterface1D<TDomain, TAlgebra>
-		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode)
+		: Interface1D<TDomain, TAlgebra>
+		  (fcts, constrained, high_dim_intfNode, one_dim_intfNode, dir)
 		{};
 
 		/// destructor
@@ -718,7 +816,7 @@ class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 		// inherited from IConstraint
 
 		///	adapts correction to enforce constraints
-		virtual void adjust_correction(vector_type& c, ConstSmartPtr<DoFDistribution> dd,
+		virtual void adjust_correction(vector_type& c, ConstSmartPtr<DoFDistribution> dd, int type,
 									   number time = 0.0)
 		{
 			UG_THROW("MultiplicativeInterface1D: The adjust_correction method cannot be "
@@ -728,7 +826,7 @@ class MultiplicativeInterface1D: public IInterface1D<TDomain, TAlgebra>
 		}
 
 
-		// inherited from IInterface1D
+		// inherited from Interface1D
 
 		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue

@@ -41,7 +41,6 @@ template <typename TDomain>
 void adjust_geom_after_refinement
 (
 	SmartPtr<ApproximationSpace<TDomain> > approx,
-	const char* innerSubset,
 	const char* fullDimIntfNodeSubset,
 	const char* lowDimIntfNodeSubset
 );
@@ -108,6 +107,17 @@ void importSolution
 	const char* functionName,
 	const char* inFileName
 );
+
+
+
+template <typename TGridFunction>
+void scale_dimless_vector
+(
+	SmartPtr<TGridFunction> scaledVecOut,
+	ConstSmartPtr<TGridFunction> dimlessVecIn,
+	const std::vector<number>& scalingFactors
+);
+
 
 
 #if 0

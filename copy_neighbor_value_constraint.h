@@ -23,6 +23,8 @@
 namespace ug{
 namespace nernst_planck{
 
+#if 0
+
 /// Constraint for DoFs that are required to have the same value as their neighbors.
 /**
  * This class is intended to make it possible to constrain DoFs of a specified
@@ -96,6 +98,7 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 		(	matrix_type& J,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0,
 			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
 			const number s_a0 = 1.0
@@ -106,6 +109,7 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 		(	vector_type& d,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0,
 			ConstSmartPtr<VectorTimeSeries<vector_type> > vSol = SPNULL,
 			const std::vector<number>* vScaleMass = NULL,
@@ -117,6 +121,7 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 		(	matrix_type& mat,
 			vector_type& rhs,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
@@ -125,6 +130,7 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 		(	vector_type& rhs,
 			const vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
@@ -132,6 +138,7 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 		virtual void adjust_solution
 		(	vector_type& u,
 			ConstSmartPtr<DoFDistribution> dd,
+			int type,
 			number time = 0.0
 		);
 
@@ -156,6 +163,59 @@ class CopyNeighborValueConstraint: public IDomainConstraint<TDomain, TAlgebra>
 
 		/// algebraic indices of constrained nodes and their respective constrainers
 		std::map<size_t, size_t> m_constraintMap;
+};
+
+#endif
+
+template <typename TDomain, typename TAlgebra>
+class Domain1dSolutionAdjuster
+{
+	public:
+		static const int worldDim = TDomain::dim;
+
+	public:
+		Domain1dSolutionAdjuster() : m_sortDir(0.0)
+		{m_sortDir[0] = 1.0;}
+
+		void add_constrained_subset(const char* ss) {m_vConstrdNames.push_back(ss);}
+		void add_constrainer_subset(const char* ss) {m_vConstrgNames.push_back(ss);}
+
+		void set_sorting_direction(std::vector<number> vDir);
+
+		void adjust_solution(SmartPtr<GridFunction<TDomain, TAlgebra> > u);
+
+	private:
+		template <typename TBaseElem> void collect_constrainers(SmartPtr<GridFunction<TDomain, TAlgebra> > u);
+		template <typename TBaseElem> void adjust_constrained(SmartPtr<GridFunction<TDomain, TAlgebra> > u);
+
+	protected:
+		std::vector<std::string> m_vConstrdNames;
+		std::vector<std::string> m_vConstrgNames;
+
+		std::vector<int> m_vConstrdSI;
+		std::vector<int> m_vConstrgSI;
+
+		MathVector<worldDim> m_sortDir;
+
+		struct DataPoint
+		{
+			public:
+				DataPoint(number coord, number val)
+				: m_coord(coord), m_val(val) {}
+
+				struct CompareFunction
+				{
+					public:
+						bool operator() (const DataPoint& a, const DataPoint& b)
+						{return a.m_coord < b.m_coord;}
+				};
+				friend struct CompareFunction;
+
+				number m_coord;
+				number m_val;
+		};
+
+		std::vector<std::vector<DataPoint> > m_vDataPoints;
 };
 
 

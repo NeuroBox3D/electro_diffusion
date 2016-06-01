@@ -15,7 +15,12 @@
 #include "pnp1d_fv1.h"
 #include "pnp1d_fv.h"
 #include "vtk_export_ho.h"
+#include "order.h"
+#include "charge_marking.h"
 
+#ifdef UG_PARALLEL
+	#include "intf_distro_adjuster.h"
+#endif
 
 using namespace std;
 using namespace ug::bridge;
@@ -75,22 +80,23 @@ static void DomainAlgebra(Registry& reg, string grp)
 
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
-		typedef IInterface1D<TDomain, TAlgebra> T;
+		typedef Interface1D<TDomain, TAlgebra> T;
 		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
-		string name = string("IInterface1D").append(suffix);
-		reg.add_class_<T, TBase >(name, grp)
-			.add_method("update", &T::update);
+		typedef IInterface1D TBase2;
+		string name = string("Interface1D").append(suffix);
+		reg.add_class_<T, TBase, TBase2>(name, grp)
+			.add_method("update", static_cast<void (T::*) ()>(&T::update));
 			//.add_method("check_values_at_interface", &T::check_values_at_interface, "", "solution grid function", "", "");
-		reg.add_class_to_group(name, "IInterface1D", tag);
+		reg.add_class_to_group(name, "Interface1D", tag);
 	}
 
 	// additive nD/1D interface
 	{
 		typedef AdditiveInterface1D<TDomain, TAlgebra> T;
-		typedef IInterface1D<TDomain, TAlgebra> TBase;
+		typedef Interface1D<TDomain, TAlgebra> TBase;
 		string name = string("AdditiveInterface1D").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*, std::vector<number>)>
 				("function(s)#constrained subset#high-dim interface node subset#"
 				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
@@ -100,19 +106,20 @@ static void DomainAlgebra(Registry& reg, string grp)
 	// multiplicative nD/1D interface
 	{
 		typedef MultiplicativeInterface1D<TDomain, TAlgebra> T;
-		typedef IInterface1D<TDomain, TAlgebra> TBase;
+		typedef Interface1D<TDomain, TAlgebra> TBase;
 		string name = string("MultiplicativeInterface1D").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*, const char*, const char*)>
+			.template add_constructor<void (*)(const char*, const char*, const char*, const char*, std::vector<number>)>
 				("function(s)#constrained subset#high-dim interface node subset#"
 				 "one-dim interface node subset")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "MultiplicativeInterface1D", tag);
 	}
 
+#if 0
 	// InterfaceMapper
 	{
-		typedef typename IInterface1D<TDomain, TAlgebra>::Interface1DMapper T;
+		typedef typename Interface1D<TDomain, TAlgebra>::Interface1DMapper T;
 		typedef ILocalToGlobalMapper<TAlgebra> TBase;
 		string name = string("Interface1DMapper").append(suffix);
 		reg.add_class_<T, TBase >(name, grp)
@@ -135,6 +142,21 @@ static void DomainAlgebra(Registry& reg, string grp)
 				.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
 	}
+#endif
+
+	// Domain1dSolutionAdjuster
+	{
+		typedef Domain1dSolutionAdjuster<TDomain, TAlgebra> T;
+		string name = string("Domain1dSolutionAdjuster").append(suffix);
+		reg.add_class_<T>(name, grp)
+			.template add_constructor<void (*)()> ()
+			.add_method("add_constrained_subset", &T::add_constrained_subset, "", "subset name", "", "")
+			.add_method("add_constrainer_subset", &T::add_constrainer_subset, "", "subset name", "", "")
+			.add_method("set_sorting_direction", &T::set_sorting_direction, "", "direction vector", "", "")
+			.add_method("adjust_solution", &T::adjust_solution, "", "solution grid function", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "Domain1dSolutionAdjuster", tag);
+	}
 
 	// vtk export for higher order grid functions
 	{
@@ -150,6 +172,14 @@ static void DomainAlgebra(Registry& reg, string grp)
 				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
 			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
 			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
+	}
+
+	// scaling of dimless solution vectors
+	{
+		reg.add_function("scale_dimless_vector", &scale_dimless_vector<TGridFunction>,
+			grp.c_str(), "", "scaled output vector#dimless input vector#vector of scaling factors for each function",
+			"Scales the dimensionless input vector using the given scaling factors for each function and writes "
+			"the result to the output vector");
 	}
 
 }
@@ -182,9 +212,12 @@ static void Domain(Registry& reg, string grp)
 
 	// adjust geometry after refinement
 	reg.add_function("adjust_geom_after_refinement", &adjust_geom_after_refinement<TDomain>, grp.c_str(),
-					 "", "approximation space#inner subset name#full-dim interface node subset name"
+					 "", "approximation space#full-dim interface node subset name"
 					 "#1d interface node subset name", "adjusts location of full-dim interface node after"
 					 "global refinement of the interface");
+	reg.add_function("reorder_dofs", &reorder_dofs<TDomain>, grp.c_str(),
+					 "", "approximation space#constrained subsets", "Re-orders DoFs in such a way that the "
+					 "constrained indices are last in the order.");
 
 	// 1D PNP FV1
 	{
@@ -204,6 +237,7 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_permettivities", &T::set_permettivities, "", "permettivity value dendrite (eps_dend*eps_0)#permettivity value membrane (eps_mem*eps_0)", "", "")
 			.add_method("set_membrane_thickness", &T::set_membrane_thickness, "", "membrane thickness", "", "")
 			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
+			.add_method("set_rtf", &T::set_rtf, "", "universal gas constant#temperature#Faraday constant", "Set natural constants in dimensions of choice.", "")
 			.add_method("set_represented_dimension", &T::set_represented_dimension, "", "represented dimension (either 2 or 3)", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP1D_FV1", tag);
@@ -226,10 +260,46 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_permettivities", &T::set_permettivities, "", "permettivity value dendrite (eps_dend*eps_0)#permettivity value membrane (eps_mem*eps_0)", "", "")
 			.add_method("set_membrane_thickness", &T::set_membrane_thickness, "", "membrane thickness", "", "")
 			.add_method("set_dendritic_radius", &T::set_dendritic_radius, "", "radius", "", "")
+			.add_method("set_rtf", &T::set_rtf, "", "universal gas constant#temperature#Faraday constant", "Set natural constants in dimensions of choice.", "")
 			.add_method("set_represented_dimension", &T::set_represented_dimension, "", "represented dimension (either 2 or 3)", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP1D_FV", tag);
 	}
+
+	// ChargeMarking
+	{
+		typedef ChargeMarking<TDomain> T;
+		typedef IElementMarkingStrategy<TDomain> TBase;
+		string name = string("ChargeMarking").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.template add_constructor<void (*)(number, size_t)>("tolerance#maximal level of refinement")
+			.add_method("set_tolerance", &T::set_tolerance, "", "tolerance", "", "")
+			.add_method("set_max_level", &T::set_max_level, "", "maximal refinement level", "", "")
+			.add_method("add_surface", &T::add_surface, "", "charged surface subset index"
+						"# adjacent element subset index to be refined", "", "")
+			.add_method("remove_surface", &T::remove_surface, "", "charged surface subset index"
+						"# adjacent element subset index to be refined", "", "")
+			.add_method("add_interface", &T:: add_interface, "", "interfaces to take into account", "")
+			.add_method("mark_without_error", &T::mark_without_error, "", "refiner#approximation space", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "ChargeMarking", tag);
+	}
+
+#ifdef UG_PARALLEL
+	// InterfaceDistroAdjuster
+	{
+		typedef InterfaceDistroAdjuster<TDomain> T;
+		string nameBase = string("InterfaceDistroAdjuster");
+		string name = nameBase;	name.append(suffix);
+		reg.add_class_<T>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)>("approx space")
+			.add_method("add_interface", &T::add_interface, "", "interface", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, nameBase, tag);
+	}
+
+	reg.add_function("set_distro_adjuster", &set_distro_adjuster<TDomain>, grp.c_str(), "", "", "");
+#endif
 
 	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
@@ -295,6 +365,15 @@ static void Common(Registry& reg, string grp)
 		.add_method("get_solution", &T::get_solution)
 		.add_method("get_rhs", &T::get_rhs)
 		.set_construct_as_smart_pointer(true);
+
+
+	// interface base class
+	{
+		typedef IInterface1D T;
+		string name = string("IInterface1D");
+		reg.add_class_<T>(name, grp);
+	}
+
 }
 
 }; // end Functionality

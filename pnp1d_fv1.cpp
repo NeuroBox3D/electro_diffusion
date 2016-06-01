@@ -23,13 +23,16 @@ PNP1D_FV1<TDomain>::PNP1D_FV1
 	const char* subsets
 )
 : IElemDisc<TDomain>(functions, subsets),
-  R(8.31451), T(298.15), F(96485.0),
   m_spApproxSpace(approx),
   m_bNonRegularGrid(false),
   m_aRadius("radius"),
   m_nIon(0), _PHI_(0),
+  m_R(8.31451), m_T(298.15), m_F(96485.0),
   m_reprDim(size_t(3))
 {
+	// throw: Poisson equation is not instationary!
+	UG_THROW("Do not use the PNP1D classes. They are faulty and need repair.");
+
 	SubsetGroup ssg(m_spApproxSpace->subset_handler(), this->m_vSubset);
 	int d = ssg.get_highest_subset_dimension();
 	if (d != 1)
@@ -50,13 +53,16 @@ PNP1D_FV1<TDomain>::PNP1D_FV1
 	const std::vector<std::string>& vSubset
 )
 : IElemDisc<TDomain>(vFct, vSubset),
-  R(8.314), T(310.0), F(96485.0),
   m_spApproxSpace(approx),
   m_bNonRegularGrid(false),
   m_aRadius("radius"),
   m_nIon(0), _PHI_(0),
+  m_R(8.31451), m_T(298.15), m_F(96485.0),
   m_reprDim(size_t(3))
 {
+	// throw: Poisson equation is not instationary!
+	UG_THROW("Do not use the PNP1D classes. They are faulty and need repair.");
+
 	SubsetGroup ssg(m_spApproxSpace->subset_handler(), this->m_vSubset);
 	int d = ssg.get_highest_subset_dimension();
 	if (d != 1)
@@ -191,6 +197,15 @@ void PNP1D_FV1<TDomain>::set_dendritic_radius(const number r)
 	m_spApproxSpace->domain()->grid()->attach_to_vertices_dv(m_aRadius, r);
 
 	m_aaRadius = Grid::AttachmentAccessor<Vertex, ANumber>(*m_spApproxSpace->domain()->grid(), m_aRadius);
+}
+
+// set constant dendritic radius
+template <typename TDomain>
+void PNP1D_FV1<TDomain>::set_rtf(number R, number T, number F)
+{
+	m_R = R;
+	m_T = T;
+	m_F = F;
 }
 
 template <typename TDomain>
@@ -344,7 +359,7 @@ void PNP1D_FV1<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, Gr
 			number el_flux = VecDot(D_grad_phi, scvf.normal());
 
 			// scale by concentration and constants
-			el_flux *= scvfArea * m_vValency[i] * F/(R*T) * c_i;
+			el_flux *= scvfArea * m_vValency[i] * m_F/(m_R*m_T) * c_i;
 
 			// add to local defect
 			d(i, scvf.from()) -= el_flux;
@@ -390,7 +405,7 @@ void PNP1D_FV1<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, Gr
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
 		{
-			d(_PHI_, co) += u(i, co) * m_vValency[i] * F * scvVolume;
+			d(_PHI_, co) += u(i, co) * m_vValency[i] * m_F * scvVolume;
 //std::cout << "charge density " << i << ": " << u(i, co) * m_vValency[i] * scvVolume << std::endl;
 		}
 	// ion concentrations
@@ -401,7 +416,7 @@ void PNP1D_FV1<TDomain>::add_def_A_elem(LocalVector& d, const LocalVector& u, Gr
 			number flux = m_vSpecConductance[i] * (u(_PHI_,co) - m_vRevPot[i]);
 
 			// scale by constants and volume
-			flux *= scvArea / (m_vValency[i] * F);
+			flux *= scvArea / (m_vValency[i] * m_F);
 
 			// add to local defect
 			d(i, co) += flux;
@@ -449,7 +464,7 @@ void PNP1D_FV1<TDomain>::add_def_M_elem(LocalVector& d, const LocalVector& u, Gr
 			number flux = u(_PHI_, co) * m_vSpecCapacity[i];
 
 			// scale by constants and volume
-			flux *= scvArea / (m_vValency[i] * F);
+			flux *= scvArea / (m_vValency[i] * m_F);
 
 			d(i, co) += flux;
 //std::cout << "%\t\t\t\t\t\t\tcapacitary " << i << ": " << flux << std::endl;
@@ -561,7 +576,7 @@ void PNP1D_FV1<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, Gr
 				number el_flux = VecDot(D_grad_phi, scvf.normal());
 
 				// scale by concentration and constants
-				el_flux *= scvfArea * m_vValency[i] * F/(R*T) * scvf.shape(sh);
+				el_flux *= scvfArea * m_vValency[i] * m_F/(m_R*m_T) * scvf.shape(sh);
 
 				// add to local Jacobian
 				J(i, scvf.from(), i, sh) -= el_flux;
@@ -575,7 +590,7 @@ void PNP1D_FV1<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, Gr
 				el_flux = VecDot(D_grad, scvf.normal());
 
 				// scale by concentration and constants
-				el_flux *= scvfArea * m_vValency[i] * F/(R*T) * c_i;
+				el_flux *= scvfArea * m_vValency[i] * m_F/(m_R*m_T) * c_i;
 
 				// add to local defect
 				J(i, scvf.from(), _PHI_, sh) -= el_flux;
@@ -612,7 +627,7 @@ void PNP1D_FV1<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, Gr
 		*/
 		// charge density term
 		for (size_t i = 0; i < m_nIon; i++)
-			J(_PHI_, co, i, co) += m_vValency[i] * F * scvVolume;
+			J(_PHI_, co, i, co) += m_vValency[i] * m_F * scvVolume;
 
 	// ion concentrations
 		for (size_t i = 0; i < m_nIon; i++)
@@ -622,7 +637,7 @@ void PNP1D_FV1<TDomain>::add_jac_A_elem(LocalMatrix& J, const LocalVector& u, Gr
 			number flux = m_vSpecConductance[i];
 
 			// scale by constants and volume
-			flux *= scvArea / (m_vValency[i] * F);
+			flux *= scvArea / (m_vValency[i] * m_F);
 
 			// add to local Jacobian
 			J(i, co, _PHI_, co) += flux;
@@ -668,7 +683,7 @@ void PNP1D_FV1<TDomain>::add_jac_M_elem(LocalMatrix& J, const LocalVector& u, Gr
 			number flux = m_vSpecCapacity[i];
 
 			// scale by constants and volume
-			flux *= scvArea / (m_vValency[i] * F);
+			flux *= scvArea / (m_vValency[i] * m_F);
 
 			// add to Jacobian
 			J(i, co, _PHI_, co) += flux;

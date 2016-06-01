@@ -82,7 +82,6 @@ template <typename TDomain>
 void adjust_geom_after_refinement
 (
 	SmartPtr<ApproximationSpace<TDomain> > approx,
-	const char* innerSubset,
 	const char* fullDimIntfNodeSubset,
 	const char* lowDimIntfNodeSubset
 )
@@ -94,18 +93,13 @@ void adjust_geom_after_refinement
 	// get subset indices for given subsets
 	int si_intf = ssh->get_subset_index(fullDimIntfNodeSubset);
 	int si_1d_intf = ssh->get_subset_index(lowDimIntfNodeSubset);
-	int si_inner = ssh->get_subset_index(innerSubset);
 
-// (A) move interface node of full-dim side if need be (i.e. if it has not already been moved)
-	// find full-dim interface node in top_level-1 first
+	// find full-dim interface node in level 0
 	Vertex* intf = NULL;
 
-	UG_COND_THROW(ssh->num_levels() < 2, "Not enough levels in multigrid. At least two levels must be present "
-			"after refinement in order to use this method.");
 
-	uint lvl = ssh->num_levels()-2; // top level - 1
-	VertexIterator iter = ssh->begin<Vertex>(si_intf, lvl);
-	if (iter == ssh->end<Vertex>(si_intf, lvl))
+	VertexIterator iter = ssh->begin<Vertex>(si_intf, 0);
+	if (iter == ssh->end<Vertex>(si_intf, 0))
 	{
 #ifndef UG_PARALLEL
 		UG_THROW("No vertex in subset for high-dimensional interface node. This is not allowed!");
@@ -122,7 +116,7 @@ void adjust_geom_after_refinement
 		intf = *iter;
 
 		// to be on the safe side
-		if (++iter != ssh->end<Vertex>(si_intf, lvl))
+		if (++iter != ssh->end<Vertex>(si_intf, 0))
 			{UG_THROW("More than one vertex in subset for high-dimensional interface node. This is not allowed!");}
 	}
 
@@ -132,27 +126,24 @@ void adjust_geom_after_refinement
 		UG_THROW("No full-dim interface node found on level top-1.");
 #else
 		return;
-	else
-	{
-		// it may turn out that the level below top is distributed to another
-		// process (and therefore exists twice, as vmaster and vslave)
-		// in this case, we only need the vslave
-		const DistributedGridManager* dgm = mg->distributed_grid_manager();
-		if (dgm->contains_status(intf, ES_V_MASTER)) return;
-	}
+
+	// it may turn out that the level below top is distributed to another
+	// process (and therefore exists twice, as vmaster and vslave)
+	// in this case, we only need the vslave
+	const DistributedGridManager* dgm = mg->distributed_grid_manager();
+	if (dgm->contains_status(intf, ES_V_MASTER)) return;
+
 #endif
 
-	// now find new position:
 	// find edge connecting full-d intf node to 1d intf node
-	// vertex child of this edge is full-d intf node on top level
 	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
 	edge_list el;
 	dom->grid()->associated_elements(el, intf);
-	size_t e = 0;
-	for (; e < el.size(); ++e)
+	size_t ei = 0;
+	for (; ei < el.size(); ++ei)
 	{
 		Vertex* other;
-		if (!el[e]->get_opposing_side(intf, &other))
+		if (!el[ei]->get_opposing_side(intf, &other))
 			{UG_THROW("No opposing side found!");}
 
 		if (ssh->get_subset_index(other) != si_1d_intf)
@@ -161,26 +152,39 @@ void adjust_geom_after_refinement
 		break;
 	}
 
-	if (e == el.size())
+	if (ei == el.size())
 		UG_THROW("New full-dimensional interface node could not be determined.\n"
 				 "There might be a processor boundary separating interfaces nodes? "
 				 "This is not allowed to happen.");
 
-	Vertex* newIntf = mg->get_child_vertex(el[e]);
-	if (!newIntf)
-		UG_THROW("New full-dim interface node could not be determined.\n"
-				 "The top level interface nodes are involved in a vertical interface. "
-				 "This case is not implemented.");
+	Edge* e = el[ei];
 
-	ssh->assign_subset(newIntf, si_intf);
 
-	// change the subset of the child of top_level-1 full-d intf node to inner subset
-	Vertex* prev_intf_top = (*el[e])[0];
-	if (!prev_intf_top)
-		UG_THROW("New full-dim interface node could not be determined.\n"
-				 "The top level interface nodes are involved in a vertical interface. "
-				 "This case is not implemented.");
-	ssh->assign_subset(mg->get_child_vertex(intf), si_inner);
+	// now iterate over multigrid levels
+	uint nlvl = ssh->num_levels();
+	for (uint lvl = 0; lvl < nlvl; ++lvl)
+	{
+		// if this edge has a vertex child, this is the full-d intf node on the level above
+		Vertex* newIntf = mg->get_child_vertex(e);
+		if (newIntf)
+		{
+			ssh->assign_subset(newIntf, si_intf);
+
+			// change the subset of the child of lower-level full-d intf node to inner subset
+			// (which is the subset the edge has)
+			ssh->assign_subset(mg->get_child_vertex(intf), ssh->get_subset_index(e));
+		}
+		else break;
+
+		// prepare for next lvl
+		intf = newIntf;
+		UG_COND_THROW(mg->num_child_edges(e) != 2, "Incorrect number of child edges.");
+		Edge* newEdge = mg->get_child_edge(e, 0);
+		if (ssh->get_subset_index((*newEdge)[0]) == si_1d_intf || ssh->get_subset_index((*newEdge)[1]) == si_1d_intf)
+			e = newEdge;
+		else
+			e = mg->get_child_edge(e, 1);
+	}
 }
 
 
@@ -453,6 +457,78 @@ void importSolution
 		}
 	}
 }
+
+
+template <typename TBaseElem, typename TGridFunction>
+void scale_dof_indices
+(
+	ConstSmartPtr<DoFDistribution> dd,
+	SmartPtr<TGridFunction> vecOut,
+	ConstSmartPtr<TGridFunction> vecIn,
+	const std::vector<number>& vScale
+)
+{
+	typename DoFDistribution::traits<TBaseElem>::const_iterator iter, iterEnd;
+	std::vector<DoFIndex> vInd;
+
+	try
+	{
+		// iterate all elements (including SHADOW_RIM_COPY!)
+		iter = dd->template begin<TBaseElem>(SurfaceView::ALL);
+		iterEnd = dd->template end<TBaseElem>(SurfaceView::ALL);
+		for (; iter != iterEnd; ++iter)
+		{
+			for (size_t fi = 0; fi < dd->num_fct(); ++fi)
+			{
+				size_t nInd = dd->inner_dof_indices(*iter, fi, vInd);
+
+				// remember multi indices
+				for (size_t dof = 0; dof < nInd; ++dof)
+					DoFRef(*vecOut, vInd[dof]) = vScale[fi] * DoFRef(*vecIn, vInd[dof]);
+			}
+		}
+	}
+	UG_CATCH_THROW("Error while scaling vector.")
+}
+
+
+
+template <typename TGridFunction>
+void scale_dimless_vector
+(
+	SmartPtr<TGridFunction> scaledVecOut,
+	ConstSmartPtr<TGridFunction> dimlessVecIn,
+	const std::vector<number>& scalingFactors
+)
+{
+	// check that the correct numbers of scaling factors are given
+	size_t n = scalingFactors.size();
+	UG_COND_THROW(n != dimlessVecIn->num_fct(), "Number of scaling factors (" << n << ") "
+			"does not match number of functions given in dimless vector (" << dimlessVecIn->num_fct() << ").");
+
+	// check that input and output vectors have the same number of components and dofs
+	UG_COND_THROW(n != scaledVecOut->num_fct(), "Input and output vectors do not have "
+			"the same number of functions (" << n << " vs. " << scaledVecOut->num_fct() << ").");
+	for (size_t fct = 0; fct < n; ++fct)
+	{
+		UG_COND_THROW(dimlessVecIn->num_dofs(fct) != scaledVecOut->num_dofs(fct),
+				"Input and output vectors do not have the same number of DoFs for function " << fct
+				<< " (" << dimlessVecIn->num_dofs(fct) << " vs. " << scaledVecOut->num_dofs(fct) << ").");
+	}
+
+	ConstSmartPtr<DoFDistribution> dd = dimlessVecIn->dof_distribution();
+
+	if (dd->max_dofs(VERTEX))
+		scale_dof_indices<Vertex, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
+	if (dd->max_dofs(EDGE))
+		scale_dof_indices<Edge, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
+	if (dd->max_dofs(FACE))
+		scale_dof_indices<Face, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
+	if (dd->max_dofs(VOLUME))
+		scale_dof_indices<Volume, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
+}
+
+
 
 
 } // namspace calciumDynamics

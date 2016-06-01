@@ -18,7 +18,14 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp1d_fv1.cpp
             pnp1d_fv.cpp
             electric_circuit.cpp
+            order.cpp
+            charge_marking.cpp
+            intf_refMarkAdjuster.cpp
    )
+
+if (PARALLEL)
+	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp) 
+endif(PARALLEL)
 
 
 if(buildEmbeddedPlugins)
