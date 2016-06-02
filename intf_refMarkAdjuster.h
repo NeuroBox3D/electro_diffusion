@@ -8,7 +8,7 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__INTF_REFMARKADJUSTER_H_
 #define UG__PLUGINS__NERNST_PLANCK__INTF_REFMARKADJUSTER_H_
 
-#include "lib_grid/algorithms/refinement/ref_mark_adjuster_interface.h"
+#include "lib_grid/refinement/ref_mark_adjuster_interface.h"
 #include "interface1d_fv.h"
 
 
