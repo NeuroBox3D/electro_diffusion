@@ -9,7 +9,7 @@
 #include "intf_refMarkAdjuster.h"
 
 #include "lib_disc/domain.h"
-#include "lib_grid/algorithms/refinement/hanging_node_refiner_base.h"
+#include "lib_grid/refinement/hanging_node_refiner_base.h"
 
 #include <algorithm>
 
