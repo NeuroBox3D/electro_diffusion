@@ -11,6 +11,7 @@
 #include "nernst_planck_util.h"
 #include "copy_neighbor_value_constraint.h"
 #include "electric_circuit.h"
+#include "edl_1d.h"
 #include "interface1d_fv.h"
 #include "pnp1d_fv1.h"
 #include "pnp1d_fv.h"
@@ -347,25 +348,46 @@ static void Algebra(Registry& reg, string grp)
  */
 static void Common(Registry& reg, string grp)
 {
-	typedef ElectricCircuit T;
-	reg.add_class_<T>("ElectricCircuit", grp)
-		.add_constructor()
-		.add_method("add_capacitor", &T::add_capacitor)
-		.add_method("add_resistor", &T::add_resistor)
-		.add_method("add_voltage_source", &T::add_voltage_source)
-		.add_method("add_current_source", &T::add_current_source)
-		.add_method("add_initial_solution", &T::add_initial_solution)
-		.add_method("init", &T::init)
-		.add_method("update_rhs", &T::update_rhs)
-		.add_method("write_to_file", &T::write_to_file)
-		.add_method("close_file", &T::close_file)
-		.add_method("solve_stationary", &T::solve_stationary)
-		.add_method("solve_euler", &T::solve_euler)
-		.add_method("solve_trapezoid", &T::solve_trapezoid)
-		.add_method("get_solution", &T::get_solution)
-		.add_method("get_rhs", &T::get_rhs)
-		.set_construct_as_smart_pointer(true);
+	// ELectricCircuit
+	{
+		typedef ElectricCircuit T;
+		reg.add_class_<T>("ElectricCircuit", grp)
+			.add_constructor()
+			.add_method("add_capacitor", &T::add_capacitor)
+			.add_method("add_resistor", &T::add_resistor)
+			.add_method("add_voltage_source", &T::add_voltage_source)
+			.add_method("add_current_source", &T::add_current_source)
+			.add_method("add_initial_solution", &T::add_initial_solution)
+			.add_method("init", &T::init)
+			.add_method("update_rhs", &T::update_rhs)
+			.add_method("write_to_file", &T::write_to_file)
+			.add_method("close_file", &T::close_file)
+			.add_method("solve_stationary", &T::solve_stationary)
+			.add_method("solve_euler", &T::solve_euler)
+			.add_method("solve_trapezoid", &T::solve_trapezoid)
+			.add_method("get_solution", &T::get_solution)
+			.add_method("get_rhs", &T::get_rhs)
+			.set_construct_as_smart_pointer(true);
+	}
 
+	// EDL simulation
+	{
+		typedef EDLSimulation T;
+		reg.add_class_<T>("EDLSimulation", grp)
+			.add_constructor()
+			.add_constructor<void (*)(number)>("membrane surface charge")
+			.add_method("set_constants", &T::set_constants)
+			.add_method("set_bnd_cond", &T::set_bnd_cond)
+			.add_method("set_geom_specs", &T::set_geom_specs)
+			.add_method("compute_solution", &T::compute_solution)
+			.add_method("set_verbosity_level", &T::set_verbosity_level)
+			.add_method("set_output_file", &T::set_output_file)
+			.add_method("set_min_reduction", &T::set_min_reduction)
+			.add_method("set_min_defect", &T::set_min_defect)
+			.add_method("set_max_iter", &T::set_max_iter)
+			.add_method("calc_EDL_ions", &T::calc_EDL_ions)
+			.set_construct_as_smart_pointer(true);
+	}
 
 	// interface base class
 	{

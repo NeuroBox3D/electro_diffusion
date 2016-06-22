@@ -66,17 +66,12 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 		// if no surface constrained exist here: nothing to do
 		if (! (nSelected + nUnselected)) continue;
 
-
-		if (partitionForLocalProc)
-		{
-			UG_LOGN("Interface " << i << ":");
-			UG_LOGN("    selected: " << nSelected);
-			UG_LOGN("  unselected: " << nUnselected);
-		}
-
-#ifdef UG_PARALLEL
-		//UG_LOG_ALL_PROCS("copying interface nodes on proc " << pcl::ProcRank() << std::endl);
-#endif
+//if (partitionForLocalProc)
+//{
+//	UG_LOGN("Interface " << i << ":");
+//	UG_LOGN("    selected: " << nSelected);
+//	UG_LOGN("  unselected: " << nUnselected);
+//}
 
 		// find surface interface nodes
 		int in1dSI = intf->intf_node_1d_subset_index();
@@ -104,11 +99,12 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 
 		UG_COND_THROW(!i1d || !ihd, "No interface nodes on proc distributing constrained nodes.");
 
-if (partitionForLocalProc && nUnselected)
-{
-	UG_LOGN("intf node 1d state = " << (size_t) dgm.get_status(i1d));
-	UG_LOGN("intf node hd state = " << (size_t) dgm.get_status(ihd));
-}
+
+//if (partitionForLocalProc && nUnselected)
+//{
+//	UG_LOGN("intf node 1d state = " << (size_t) dgm.get_status(i1d));
+//	UG_LOGN("intf node hd state = " << (size_t) dgm.get_status(ihd));
+//}
 
 		// select and decide on v-interface status
 		if (!createVerticalInterfaces)
@@ -133,7 +129,7 @@ if (partitionForLocalProc && nUnselected)
 					//if (mg.get_level(i1d) == 0)
 					if (!dgm.contains_status(i1d, ES_V_SLAVE))
 					{
-UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-master.");
+//UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-master.");
 						sel.select(i1d, IS_VMASTER);
 					}
 					//else if (selectedExist[i])
@@ -149,6 +145,21 @@ UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-master.");
 						//sel.select(ihd, IS_VSLAVE);
 				}
 			}
+
+			// also ensure that vmaster status is kept if node is already vmaster
+			else
+			{
+				if (dgm.contains_status(i1d, ES_V_MASTER)
+					&& !(sel.get_selection_status(i1d) & IS_VSLAVE))
+				{
+//UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-master.");
+					sel.select(i1d, sel.get_selection_status(i1d) | IS_VMASTER);
+				}
+
+				if (dgm.contains_status(ihd, ES_V_MASTER)
+					&& !(sel.get_selection_status(ihd) & IS_VSLAVE))
+					sel.select(ihd, sel.get_selection_status(ihd) | IS_VMASTER);
+			}
 		}
 
 		// If we are processing selection for another proc
@@ -161,10 +172,10 @@ UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-master.");
 				if (!(sel.get_selection_status(i1d) & (IS_VMASTER | IS_NORMAL)))
 					//if (mg.get_level(i1d) == 0 && !dgm.contains_status(i1d, ES_V_MASTER))
 				{
-					if (partitionForLocalProc)
-						{UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << "  to v-slave.");}
-					else
-						{UG_LOGN("Setting intf 1d node on some other proc to v-slave.");}
+//if (partitionForLocalProc)
+//	{UG_LOGN("Setting intf 1d node on proc " << pcl::ProcRank() << " to v-slave.");}
+//else
+//	{UG_LOGN("Setting intf 1d node on some other proc to v-slave.");}
 					sel.select(i1d, IS_VSLAVE);
 				}
 				if (!(sel.get_selection_status(ihd) & (IS_VMASTER | IS_NORMAL)))
@@ -189,7 +200,8 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 	typedef typename SurfaceView::traits<Vertex>::const_iterator sv_it_type;
 	typedef typename GridLayoutMap::Types<Vertex>::Interface IntfType;
 
-	DistributedGridManager& dgm = *m_dom->grid()->distributed_grid_manager();
+	MultiGrid& mg = *m_dom->grid();
+	DistributedGridManager& dgm = *mg.distributed_grid_manager();
 	GridLayoutMap& glm = dgm.grid_layout_map();
 	const SurfaceView& sv = *m_approx->surface_view();
 
@@ -218,9 +230,46 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 		int lvl1d = -1;
 		int lvlhd = -1;
 
-		bool constrdExist = false;
+		//GridLevel surfWithGhosts = GridLevel(GridLevel::TOP, GridLevel::SURFACE, true); // also search for ghosts!
 
-		GridLevel surfWithGhosts = GridLevel(GridLevel::TOP, GridLevel::SURFACE, true); // also search for ghosts!
+		// find surface level interface nodes
+		uint nLvl = (uint) mg.num_levels();
+		for (uint lvl = nLvl-1; lvl < nLvl; --lvl)
+		{
+			sh_it_type it = m_sh->begin<Vertex>(i1dSI, lvl);
+			sh_it_type it_end = m_sh->end<Vertex>(i1dSI, lvl);
+
+			if (it != it_end)
+			{
+				if ((dgm.get_status(*it) & (ES_H_MASTER | ES_H_SLAVE | ES_V_SLAVE))
+					|| (dgm.get_status(*it) == ES_NONE))
+					rankIN1d = locRank;
+
+				vrtIN1d = *it;
+				lvl1d = lvl;
+
+				break;
+			}
+		}
+		for (uint lvl = nLvl-1; lvl < nLvl; --lvl)
+		{
+			sh_it_type it = m_sh->begin<Vertex>(ihdSI, lvl);
+			sh_it_type it_end = m_sh->end<Vertex>(ihdSI, lvl);
+
+			if (it != it_end)
+			{
+				if ((dgm.get_status(*it) & (ES_H_MASTER | ES_H_SLAVE | ES_V_SLAVE))
+					|| (dgm.get_status(*it) == ES_NONE))
+					rankINhd = locRank;
+
+				vrtINhd = *it;
+				lvlhd = lvl;
+
+				break;
+			}
+		}
+
+		/*
 		sv_it_type it = sv.begin<Vertex>(i1dSI, surfWithGhosts, SurfaceView::ALL_BUT_SHADOW_COPY);
 		sv_it_type it_end = sv.end<Vertex>(i1dSI, surfWithGhosts, SurfaceView::ALL_BUT_SHADOW_COPY);
 
@@ -244,13 +293,15 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 			vrtINhd = *it;
 			lvlhd = m_dom->grid()->get_level(vrtINhd);
 		}
+		*/
 
-		// if interface nodes are present, find out whether there are also constrained nodes
+		// if surface interface nodes are present, find out whether there are also constrained nodes
+		bool constrdExist = false;
 		if (vrtIN1d && vrtINhd)
 		{
 			int constrdSI = intf->constrained_subset_index();
-			GridLevel surfNoGhosts = GridLevel(GridLevel::TOP, GridLevel::SURFACE, false); // also search for ghosts!
-			it = sv.begin<Vertex>(constrdSI, surfNoGhosts, SurfaceView::ALL_BUT_SHADOW_COPY);
+			GridLevel surfNoGhosts = GridLevel(GridLevel::TOP, GridLevel::SURFACE, false);
+			sv_it_type it = sv.begin<Vertex>(constrdSI, surfNoGhosts, SurfaceView::ALL_BUT_SHADOW_COPY);
 			sv_it_type it_end = sv.end<Vertex>(constrdSI, surfNoGhosts, SurfaceView::ALL_BUT_SHADOW_COPY);
 
 			for (; it != it_end; ++it)
@@ -262,8 +313,8 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 				}
 			}
 
-			UG_LOGN("intf node 1d state = " << (size_t) dgm.get_status(vrtIN1d));
-			UG_LOGN("intf node hd state = " << (size_t) dgm.get_status(vrtINhd));
+//UG_LOGN("intf node 1d state = " << (size_t) dgm.get_status(vrtIN1d));
+//UG_LOGN("intf node hd state = " << (size_t) dgm.get_status(vrtINhd));
 		}
 
 
@@ -276,14 +327,16 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 		int rankINhdGlob;
 		comm.allreduce(&rankINhd, &rankINhdGlob, 1, PCL_RO_MIN);
 
-UG_LOGN("rank_1d: " << rankIN1dGlob);
+//UG_LOGN("rank_1d: " << rankIN1dGlob);
 
 		// should not happen, but who knows
 		UG_COND_THROW(rankIN1dGlob >= nProcs, "No admissible hMaster for 1d interface node.");
+		//if (rankIN1dGlob >= nProcs) continue;
 
 		// now send ranks of v-masters with constrained nodes to h-master
 		int* recBuff = NULL;
 		if (locRank == rankIN1dGlob) recBuff = new int[nProcs];
+
 		if (vrtIN1d && rankIN1d == nProcs && constrdExist) rankIN1d = locRank;
 		else rankIN1d = nProcs;
 		comm.gather(&rankIN1d, 1, PCL_DT_INT, recBuff, 1, PCL_DT_INT, rankIN1dGlob);
@@ -301,11 +354,11 @@ UG_LOGN("rank_1d: " << rankIN1dGlob);
 					IntfType::iterator it = ii.find_insert_pos_sorted(vrtIN1d, gidCmp);
 					if (it == ii.end() || gidCmp(vrtIN1d, ii.get_element(it)))
 					{
-UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " as master for proc " << j << ".\n");
+//UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " as master for proc " << j << ".\n");
 						ii.insert(vrtIN1d, it);
 
-for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
+//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
+//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 					}
 				}
 			}
@@ -321,11 +374,11 @@ UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 				IntfType::iterator it = ii.find_insert_pos_sorted(vrtIN1d, gidCmp);
 				if (it == ii.end() || gidCmp(vrtIN1d, ii.get_element(it)))
 				{
-UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " as slave for proc " << rankIN1dGlob << ".\n");
+//UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " as slave for proc " << rankIN1dGlob << ".\n");
 					ii.insert(vrtIN1d, it);
 
-for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
+//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
+//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 				}
 			}
 		}
@@ -360,11 +413,11 @@ UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 					IntfType::iterator it = ii.find_insert_pos_sorted(vrtINhd, gidCmp);
 					if (it == ii.end() || gidCmp(vrtINhd, ii.get_element(it)))
 					{
-UG_LOG("Inserting hd intf vertex " << vrtINhd << " as master for proc " << j << ".\n");
+//UG_LOG("Inserting hd intf vertex " << vrtINhd << " as master for proc " << j << ".\n");
 						ii.insert(vrtINhd, it);
 
-for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
+//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
+//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 					}
 				}
 			}
@@ -380,11 +433,11 @@ UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 				IntfType::iterator it = ii.find_insert_pos_sorted(vrtINhd, gidCmp);
 				if (it == ii.end() || gidCmp(vrtINhd, ii.get_element(it)))
 				{
-UG_LOG("Inserting hd intf vertex " << vrtINhd << " as slave for proc " << rankINhdGlob << ".\n");
+//UG_LOG("Inserting hd intf vertex " << vrtINhd << " as slave for proc " << rankINhdGlob << ".\n");
 					ii.insert(vrtINhd, it);
 
-for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
+//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
+//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
 				}
 			}
 		}

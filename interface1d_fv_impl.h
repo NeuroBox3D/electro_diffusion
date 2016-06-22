@@ -514,6 +514,7 @@ TElem* Interface1D<TDomain, TAlgebra>::get_constrainer(TElem* constrd)
 	typedef typename MultiGrid::traits<TContainingElem>::secure_container cont_list;
 
 	SmartPtr<TDomain> dom = this->approximation_space()->domain();
+	MultiGrid& mg = *dom->grid();
 
 	const typename TDomain::position_accessor_type& aaPos = dom->position_accessor();
 	const typename TDomain::position_type& constrdPos = CalculateCenter(constrd, aaPos);
@@ -523,12 +524,12 @@ TElem* Interface1D<TDomain, TAlgebra>::get_constrainer(TElem* constrd)
 	// in the specified direction of the interface
 	TElem* constrg = NULL;
 	cont_list cl;
-	dom->grid()->associated_elements(cl, constrd);
+	mg.associated_elements(cl, constrd);
 	size_t cont = 0;
 	for (; cont < cl.size(); ++cont)
 	{
 		// continue as long as edge does not point into interface direction
-		TElem* opp = GetOpposingSide(*dom->grid(), cl[cont], constrd);
+		TElem* opp = GetOpposingSide(mg, cl[cont], constrd);
 		if (!opp) continue;
 
 		typename TDomain::position_type oppPos = CalculateCenter(opp, aaPos);
@@ -545,6 +546,19 @@ TElem* Interface1D<TDomain, TAlgebra>::get_constrainer(TElem* constrd)
 
 		constrg = opp;
 		break;
+	}
+
+	// in adaptive multigrids, a constrainer might be present but unconnected;
+	// look for it by going down one level, finding constrainer there and then up again
+	if (!constrg)
+	{
+		constrd = dynamic_cast<TElem*>(mg.get_parent(constrd));
+		if (!constrd) return constrg;
+
+		constrg = get_constrainer<TElem, TContainingElem>(constrd);
+		if (!constrg || !mg.num_children<TElem>(constrg)) return NULL;
+
+		constrg = mg.get_child<TElem>(constrg, 0);
 	}
 
 	//UG_COND_THROW(!constrg, "No constrainer found!");
@@ -735,6 +749,15 @@ void Interface1D<TDomain, TAlgebra>::fill_constrainer_map(ConstSmartPtr<DoFDistr
 			mg->associated_elements(el, constrd);
 			UG_COND_THROW(el.size(), "Constrained element without constrainer "
 									 "even though full-dim element is connected.");
+
+			// we also need to check that there is no full-dim element connected one level below
+			// since it might contribute to defect on the constrained dof
+			constrd = dynamic_cast<TElem*>(mg->get_parent(constrd));
+			if (!constrd) continue;
+
+			mg->associated_elements(el, constrd);
+			UG_COND_THROW(el.size(), "Constrained element without constrainer "
+												 "even though full-dim element is connected.");
 
 			// now ignore
 			continue;

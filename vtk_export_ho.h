@@ -106,11 +106,11 @@ inline void CopySelected
 }
 
 
-template <typename TElem, typename TGridFunction>
+template <typename TElem, typename TGridFunction, typename TGGFND>
 inline void interpolate_from_original_fct
 (
 	SmartPtr<TGridFunction> u_new,
-	const GlobalGridFunctionNumberData<TGridFunction>& u_orig,
+	const TGGFND& u_orig,
 	size_t fct,
 	const LFEID& lfeid
 )
@@ -147,28 +147,7 @@ inline void interpolate_from_original_fct
 }
 
 
-/// export a solution from a high-order ansatz space to vtk file(s)
-/**
- *  This function will create a temporary domain, copy all elements from the domain
- *  which the grid function u is defined on to the temporary domain and then refine
- *  the resulting grid until it has at least as many vertices as the original grid
- *  functions has unknowns (e.g. a grid for a function of order 2 would be refined
- *  once, a grid for a function of order 4 would be refined twice, and so on).
- *  After refinement, a temporary grid function of order 1 (Lagrange) is defined on
- *  the refined grid and its values interpolated from the original function u.
- *  The temporary first-order grid function is then exported to vtk using the usual
- *  mechanisms.
- *
- * @param u			original high-order grid function to be exported
- * @param vFct		vector of function names (contained in grid function) to be exported
- * @param order		order to be used
- * @param vtkOutput	VTKOutput object to use for export of linearized function
- * @param filename	file name to be used in export
- *
- * @todo The order parameter might be left out and determined automatically from the
- * 		 grid function.
- */
-template <typename TGridFunction>
+template <typename TGridFunction, int trueDim>
 void vtk_export_ho
 (
 	SmartPtr<TGridFunction> u,
@@ -183,7 +162,7 @@ void vtk_export_ho
 	typedef typename TGridFunction::domain_type dom_type;
 	typedef typename dom_type::position_attachment_type position_attachment_type;
 	typedef typename TGridFunction::approximation_space_type approx_space_type;
-	typedef typename TGridFunction::element_type elem_type;
+	typedef typename TGridFunction::template dim_traits<trueDim>::grid_base_object elem_type;
 
 	SmartPtr<approx_space_type> srcApproxSpace = u->approx_space();
 	SmartPtr<dom_type> srcDom = srcApproxSpace->domain();
@@ -257,19 +236,25 @@ void vtk_export_ho
 	{
 		const LFEID lfeid = u_new->dof_distribution()->lfeid(fg[fct]);
 
-		GlobalGridFunctionNumberData<TGridFunction> ggfnd =
-			GlobalGridFunctionNumberData<TGridFunction>(u, fg.name(fct));
+		GlobalGridFunctionNumberData<TGridFunction, trueDim> ggfnd =
+			GlobalGridFunctionNumberData<TGridFunction, trueDim>(u, fg.name(fct));
 
 		// iterate over DoFs in new function and evaluate
 		// should be vertices only for Lagrange-1
 		if (u_new->max_dofs(VERTEX))
-			interpolate_from_original_fct<Vertex, TGridFunction>(u_new, ggfnd, fct, lfeid);
+			interpolate_from_original_fct<Vertex, TGridFunction, GlobalGridFunctionNumberData<TGridFunction, trueDim> >
+				(u_new, ggfnd, fct, lfeid);
+		/*
 		if (u_new->max_dofs(EDGE))
-			interpolate_from_original_fct<Edge, TGridFunction>(u_new, ggfnd, fct, lfeid);
+			interpolate_from_original_fct<Edge, TGridFunction, GlobalGridFunctionNumberData<TGridFunction, trueDim> >
+				(u_new, ggfnd, fct, lfeid);
 		if (u_new->max_dofs(FACE))
-			interpolate_from_original_fct<Face, TGridFunction>(u_new, ggfnd, fct, lfeid);
+			interpolate_from_original_fct<Face, TGridFunction, GlobalGridFunctionNumberData<TGridFunction, trueDim> >
+				(u_new, ggfnd, fct, lfeid);
 		if (u_new->max_dofs(VOLUME))
-			interpolate_from_original_fct<Volume, TGridFunction>(u_new, ggfnd, fct, lfeid);
+			interpolate_from_original_fct<Volume, TGridFunction, GlobalGridFunctionNumberData<TGridFunction, trueDim> >
+				(u_new, ggfnd, fct, lfeid);
+		*/
 	}
 
 #ifdef UG_PARALLEL
@@ -280,6 +265,59 @@ void vtk_export_ho
 
 	// return new grid function
 	vtkOutput->print(filename, *u_new, step, time);
+}
+
+
+/// export a solution from a high-order ansatz space to vtk file(s)
+/**
+ *  This function will create a temporary domain, copy all elements from the domain
+ *  which the grid function u is defined on to the temporary domain and then refine
+ *  the resulting grid until it has at least as many vertices as the original grid
+ *  functions has unknowns (e.g. a grid for a function of order 2 would be refined
+ *  once, a grid for a function of order 4 would be refined twice, and so on).
+ *  After refinement, a temporary grid function of order 1 (Lagrange) is defined on
+ *  the refined grid and its values interpolated from the original function u.
+ *  The temporary first-order grid function is then exported to vtk using the usual
+ *  mechanisms.
+ *
+ * @param u			original high-order grid function to be exported
+ * @param vFct		vector of function names (contained in grid function) to be exported
+ * @param order		order to be used
+ * @param vtkOutput	VTKOutput object to use for export of linearized function
+ * @param filename	file name to be used in export
+ *
+ * @todo The order parameter might be left out and determined automatically from the
+ * 		 grid function.
+ */
+template <typename TGridFunction>
+void vtk_export_ho
+(
+	SmartPtr<TGridFunction> u,
+	const std::vector<std::string>& vFct,
+	size_t order,
+	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
+	const char* filename,
+	size_t step,
+	number time
+)
+{
+	// find highest dim that contains any elements
+	MultiGrid& srcGrid = *u->approx_space()->domain()->grid();
+	if (srcGrid.num_volumes())
+		vtk_export_ho<TGridFunction, TGridFunction::dim >= 3 ? 3 : TGridFunction::dim>
+			(u, vFct, order, vtkOutput, filename, step, time);
+	else if (srcGrid.num_faces())
+		vtk_export_ho<TGridFunction, TGridFunction::dim >= 2 ? 2 : TGridFunction::dim>
+			(u, vFct, order, vtkOutput, filename, step, time);
+	else if (srcGrid.num_edges())
+		vtk_export_ho<TGridFunction, TGridFunction::dim >= 1 ? 1 : TGridFunction::dim>
+			(u, vFct, order, vtkOutput, filename, step, time);
+	else if (srcGrid.num_vertices())
+		vtk_export_ho<TGridFunction, TGridFunction::dim >= 0 ? 0 : TGridFunction::dim>
+			(u, vFct, order, vtkOutput, filename, step, time);
+	else
+		vtk_export_ho<TGridFunction, TGridFunction::dim>(u, vFct, order, vtkOutput, filename, step, time);
+
 }
 
 

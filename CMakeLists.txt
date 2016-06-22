@@ -18,6 +18,7 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp1d_fv1.cpp
             pnp1d_fv.cpp
             electric_circuit.cpp
+            edl_1d.cpp
             order.cpp
             charge_marking.cpp
             intf_refMarkAdjuster.cpp
