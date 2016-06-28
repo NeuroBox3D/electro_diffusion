@@ -184,5 +184,18 @@ void InterfaceRefMarkAdjuster::ref_marks_changed
 	}
 }
 
+
+
+void add_interface_ref_mark_adjuster(IRefiner* ref, SmartPtr<InterfaceRefMarkAdjuster> irma)
+{
+	HangingNodeRefiner_MultiGrid* href = dynamic_cast<HangingNodeRefiner_MultiGrid*>(ref);
+	UG_COND_THROW(!href, "An interface refinement mark adjuster can only be added to an instance of HangingNodeRefiner_MultiGrid.");
+
+	href->add_ref_mark_adjuster(irma);
+}
+
+
+
+
 } // namespace nernst_planck
 } // namespace ug

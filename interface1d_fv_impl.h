@@ -1300,12 +1300,13 @@ void Interface1D<TDomain, TAlgebra>::adjust_correction
 
 /*
 template <typename TDomain, typename TAlgebra>
-void IInterface1D<TDomain, TAlgebra>::adjust_restriction
+void Interface1D<TDomain, TAlgebra>::adjust_restriction
 (
 	vector_type& uCoarse,
 	GridLevel coarseLvl,
 	const vector_type& uFine,
-	GridLevel fineLvl
+	GridLevel fineLvl,
+	int type
 )
 {
 	// get dof distro for coarse level
@@ -1340,8 +1341,24 @@ void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 	number time
 )
 {
+	// only adapt BEFORE hanging nodes adaption (as coarse grid node can never be hanging)
+	if (type != CT_MAY_DEPEND_ON_HANGING)
+		return;
 
-	// SCREW IT; does not work properly
+	// get constraint info for dof distros
+	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::iterator CIIter;
+	CIIter ciit = m_mConstraints.find(ddFine.get());
+	if (ciit == m_mConstraints.end()) update(ddFine);
+	ConstraintInfo& cInfo_f = m_mConstraints[ddFine.get()];
+	std::map<size_t, ConstrainerInfo>& constrainerMap_f = cInfo_f.constrainerMap;
+
+	// set prolongation for fine constrained nodes to 0.0
+	typename std::map<size_t, ConstrainerInfo>::iterator it = constrainerMap_f.begin();
+	typename std::map<size_t, ConstrainerInfo>::iterator it_end = constrainerMap_f.end();
+	for (; it != it_end; ++it)
+		SetRow(P, it->first, 0.0);
+
+	// SCREW IT; does not work properly (and is wrong!)
 /*
 	// only adapt BEFORE hanging nodes adaption (as coarse grid node can never be hanging)
 	if (type != CT_MAY_DEPEND_ON_HANGING)

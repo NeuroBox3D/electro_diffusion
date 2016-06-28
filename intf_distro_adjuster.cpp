@@ -8,10 +8,96 @@
 #include "lib_grid/parallelization/distribution.h" // for interface states
 #include "intf_distro_adjuster.h"
 #include "lib_grid/grid/grid_base_object_traits.h"
+#include "lib_grid/grid/neighborhood.h"				// CollectNeighbors
 #include "lib_grid/algorithms/attachment_util.h"
 
 namespace ug {
 namespace nernst_planck {
+
+
+template <typename TDomain>
+void InterfaceDistroAdjuster<TDomain>::collect_neighbors
+(
+	std::vector<elem_type*>& neighborsOut,
+	elem_type* elem
+)
+{
+	// normal neighbors
+	MultiGrid& mg = *m_dom->grid();
+	CollectNeighbors(neighborsOut, elem, mg);
+
+	// loop interfaces to find additional neighbors
+	std::set<elem_type*> additionalNeighbors;
+	size_t sz = m_vIntf.size();
+	for (size_t i = 0; i < sz; ++i)
+	{
+		SmartPtr<IInterface1D> intf = m_vIntf[i];
+
+		int constrdSI = intf->constrained_subset_index();
+		int in1dSI = intf->intf_node_1d_subset_index();
+
+		// check if elem is first elem of extension
+		// that is the case if it has the 1d interface vertex, but no constrained side
+		typedef typename MultiGrid::traits<Vertex>::secure_container vrt_list;
+		vrt_list vl;
+		mg.associated_elements(vl, elem);
+
+		bool candidateElem = false;
+		size_t sz = vl.size();
+		for (size_t v = 0; v < sz; ++v)
+		{
+			if (m_sh->get_subset_index(vl[v]) == in1dSI)
+			{
+				candidateElem = true;
+				break;
+			}
+		}
+		if (!candidateElem) continue;
+
+		typedef typename MultiGrid::traits<side_type>::secure_container side_list;
+		side_list sl;
+		mg.associated_elements(sl, elem);
+
+		sz = sl.size();
+		for (size_t s = 0; s < sz; ++s)
+		{
+			if (m_sh->get_subset_index(sl[s]) == constrdSI)
+			{
+				candidateElem = false;
+				break;
+			}
+		}
+		if (!candidateElem) continue;
+
+		// add all (same-level) elems at interface to first extension element
+		typedef typename geometry_traits<side_type>::const_iterator sh_it_type;
+		typedef typename MultiGrid::traits<elem_type>::secure_container elem_list;
+
+		int lvl = mg.get_level(elem);
+
+		sh_it_type it = m_sh->begin<side_type>(constrdSI, lvl);
+		sh_it_type it_end = m_sh->end<side_type>(constrdSI, lvl);
+		for (; it != it_end; ++it)
+		{
+			elem_list el;
+			mg.associated_elements(el, *it);
+
+			UG_COND_THROW(el.size() != 1, "More (or less) than one element associated "
+										  "to constrained side (" << el.size() << ").");
+
+			UG_COND_THROW(!el[0], "NULL elem!");
+			additionalNeighbors.insert(el[0]);
+		}
+	}
+
+	// add additional neighbors to outgoing vector
+	typename std::set<elem_type*>::iterator it = additionalNeighbors.begin();
+	typename std::set<elem_type*>::iterator it_end = additionalNeighbors.end();
+	for (; it != it_end; ++it)
+		neighborsOut.push_back(*it);
+}
+
+
 
 
 template <typename TDomain>

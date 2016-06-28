@@ -14,6 +14,9 @@
 #include "lib_grid/lib_grid_messages.h"
 #include "common/util/smart_pointer.h"
 
+#include "lib_grid/algorithms/graph/dual_graph.h"	// DualGraphNeighborCollector
+#include "lib_grid/grid_objects/grid_dim_traits.h"
+
 #include "interface1d_fv.h"
 
 #include <vector>
@@ -22,13 +25,27 @@
 namespace ug {
 namespace nernst_planck {
 
+// This class' collect_neighbor method can not be used in Parmetis partitioninf
+// for grids without full-dim (w.r.t. TDomain::dim) elements a.t.m.
+// To treat that case, you will need to declare this class not only template
+// of TDomain, but also of refDim which must then be used in the public derivation
+// statement from DualGraphNeighborCollector below.
+
 template <typename TDomain>
 class InterfaceDistroAdjuster
-	: public DistroAdjuster
+	: public DistroAdjuster,
+	  public DualGraphNeighborCollector<typename grid_dim_traits<TDomain::dim>::grid_base_object>
 {
+	public:
+	typedef typename grid_dim_traits<TDomain::dim>::grid_base_object elem_type;
+	typedef typename grid_dim_traits<TDomain::dim-1>::grid_base_object side_type;
+
 	public:
 		InterfaceDistroAdjuster(SmartPtr<ApproximationSpace<TDomain> > approx);
 		virtual ~InterfaceDistroAdjuster() {};
+
+		// inherited from DualGraphNeighborAdjuster
+		void collect_neighbors(std::vector<elem_type*>& neighborsOut, elem_type* elem);
 
 		// inherited from DistroAdjuster
 		virtual void adjust

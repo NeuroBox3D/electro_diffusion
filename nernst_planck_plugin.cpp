@@ -18,6 +18,7 @@
 #include "vtk_export_ho.h"
 #include "order.h"
 #include "charge_marking.h"
+#include "intf_refMarkAdjuster.h"
 
 #ifdef UG_PARALLEL
 	#include "intf_distro_adjuster.h"
@@ -280,7 +281,7 @@ static void Domain(Registry& reg, string grp)
 						"# adjacent element subset index to be refined", "", "")
 			.add_method("remove_surface", &T::remove_surface, "", "charged surface subset index"
 						"# adjacent element subset index to be refined", "", "")
-			.add_method("add_interface", &T:: add_interface, "", "interfaces to take into account", "")
+			//.add_method("add_interface", &T::add_interface, "", "interfaces to take into account", "")
 			.add_method("mark_without_error", &T::mark_without_error, "", "refiner#approximation space", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ChargeMarking", tag);
@@ -290,9 +291,10 @@ static void Domain(Registry& reg, string grp)
 	// InterfaceDistroAdjuster
 	{
 		typedef InterfaceDistroAdjuster<TDomain> T;
+		typedef IDualGraphNeighborCollector TBase;
 		string nameBase = string("InterfaceDistroAdjuster");
 		string name = nameBase;	name.append(suffix);
-		reg.add_class_<T>(name, grp)
+		reg.add_class_<T, TBase>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)>("approx space")
 			.add_method("add_interface", &T::add_interface, "", "interface", "", "")
 			.set_construct_as_smart_pointer(true);
@@ -395,6 +397,18 @@ static void Common(Registry& reg, string grp)
 		string name = string("IInterface1D");
 		reg.add_class_<T>(name, grp);
 	}
+
+	// interface refinement mark adjuster
+	{
+		typedef InterfaceRefMarkAdjuster T;
+		reg.add_class_<T>("InterfaceRefMarkAdjuster", grp)
+		    .add_constructor()
+		    .add_method("add_interfaces", &T::add_interfaces, "", "vector of interfaces", "")
+			.add_method("set_subset_handler", &T::set_subset_handler, "", "subset handler", "")
+			.set_construct_as_smart_pointer(true);
+	}
+
+	reg.add_function("add_interface_ref_mark_adjuster", &add_interface_ref_mark_adjuster, grp.c_str(), "", "", "");
 
 }
 

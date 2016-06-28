@@ -9,6 +9,7 @@
 #define UG__PLUGINS__NERNST_PLANCK__INTF_REFMARKADJUSTER_H_
 
 #include "lib_grid/refinement/ref_mark_adjuster_interface.h"
+#include "lib_grid/refinement/hanging_node_refiner_multi_grid.h"
 #include "interface1d_fv.h"
 
 
@@ -41,11 +42,12 @@ class InterfaceRefMarkAdjuster
 		);
 
 	private:
-		//std::vector<int> m_vIntfSI;
 		std::vector<SmartPtr<IInterface1D> > m_vIntf;
 
 		ConstSmartPtr<ISubsetHandler> m_ssh;
 };
+
+void add_interface_ref_mark_adjuster(IRefiner* ref, SmartPtr<InterfaceRefMarkAdjuster> irma);
 
 
 } // namespace nernst_planck

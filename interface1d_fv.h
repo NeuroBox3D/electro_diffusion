@@ -341,9 +341,10 @@ class Interface1D
 			vector_type& uCoarse,
 			GridLevel coarseLvl,
 			const vector_type& uFine,
-			GridLevel fineLvl
+			GridLevel fineLvl,
+			int type
 		);
-		 */
+		*/
 
 		/// sets constraints in prolongation
 		virtual void adjust_prolongation

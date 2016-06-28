@@ -109,7 +109,7 @@ void ChargeMarking<TDomain>::mark(IRefiner& refiner, ConstSmartPtr<DoFDistributi
 			}
 		}
 	}
-
+/*
 	if (m_vIntf.size())
 	{
 		HangingNodeRefinerBase<MGSelector>* hnr = dynamic_cast<HangingNodeRefinerBase<MGSelector>*>(&refiner);
@@ -126,6 +126,7 @@ void ChargeMarking<TDomain>::mark(IRefiner& refiner, ConstSmartPtr<DoFDistributi
 					"         and might not work properly with the given refiner type.");
 		}
 	}
+*/
 }
 
 

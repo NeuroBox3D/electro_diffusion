@@ -32,7 +32,7 @@ public:
 	void set_tolerance(number tol) {m_tol = tol;}
 	void set_max_level(size_t max_level) {m_max_level = max_level;}
 
-	void add_interface(SmartPtr<IInterface1D> intf) {m_vIntf.push_back(intf);}
+	//void add_interface(SmartPtr<IInterface1D> intf) {m_vIntf.push_back(intf);}
 
 	void add_surface(int surf_si, int adj_vol_si);
 	void remove_surface(int surf_si, int adj_vol_si);
@@ -52,7 +52,7 @@ protected:
 protected:
 	number m_tol;
 	size_t m_max_level;
-	std::vector<SmartPtr<IInterface1D> > m_vIntf;
+	//std::vector<SmartPtr<IInterface1D> > m_vIntf;
 
 	/// vector holding pairs of charged surface and adjacent
 	/// element subset indices
