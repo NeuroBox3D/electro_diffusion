@@ -22,6 +22,7 @@ set(SOURCES nernst_planck_plugin.cpp
             order.cpp
             charge_marking.cpp
             intf_refMarkAdjuster.cpp
+            flux_exporter.cpp
    )
 
 if (PARALLEL)

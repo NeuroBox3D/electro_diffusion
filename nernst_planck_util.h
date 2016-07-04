@@ -17,8 +17,8 @@
 #include <fstream>
 
 
-namespace ug{
-namespace nernst_planck{
+namespace ug {
+namespace nernst_planck {
 
 
 template <typename TGridFunction>

@@ -19,6 +19,7 @@
 #include "order.h"
 #include "charge_marking.h"
 #include "intf_refMarkAdjuster.h"
+#include "flux_exporter.h"
 
 #ifdef UG_PARALLEL
 	#include "intf_distro_adjuster.h"
@@ -61,6 +62,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 
 	typedef typename TAlgebra::vector_type vector_type;
 	typedef GridFunction<TDomain, TAlgebra> TGridFunction;
+
+	static const int dim = TDomain::dim;
 
 	// write residuals to file function for param optimization
 	reg.add_function("write_residuals_to_file", &writeResidualsToFile<TGridFunction>, grp.c_str(),
@@ -182,6 +185,67 @@ static void DomainAlgebra(Registry& reg, string grp)
 			grp.c_str(), "", "scaled output vector#dimless input vector#vector of scaling factors for each function",
 			"Scales the dimensionless input vector using the given scaling factors for each function and writes "
 			"the result to the output vector");
+	}
+
+
+	// flux field export
+	{
+		typedef FluxExporter<TGridFunction> T;
+		string name = string("FluxExporter").append(suffix);
+		reg.add_class_<T>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<TGridFunction>, std::string, std::string)> ("grid function, species name, potential name")
+			.add_method("set_diff_const", &T::set_diff_const, "", "diffusion constant", "", "")
+			.add_method("set_conv_const", &T::set_conv_const, "", "convection constant", "", "")
+			.add_method("set_quad_order", &T::set_quad_order, "", "order", "", "")
+			.add_method("set_hanging_constraint", &T::set_hanging_constraint, "", "constraint for hanging nodes", "", "")
+			.add_method("set_subsets", static_cast<void (T::*) (const std::vector<std::string>&)>(&T::set_subsets), "", "subsets as vector of string", "", "")
+			.add_method("set_subsets", static_cast<void (T::*) (const char* cSubsets)>(&T::set_subsets), "", "subsets as comma-separated c-string", "", "")
+			.add_method("write_flux",
+						static_cast<void (T::*)
+						(
+							SmartPtr<VTKOutput<dim> > vtkOutput,
+							std::string filename,
+							size_t step,
+							number time,
+							std::string fluxName,
+							number scale_factor
+						)>(&T::write_flux),
+						"", "vtkOutput object#filename#step#time#flux name#scale factor", "", "")
+			.add_method("write_flux",
+						static_cast<void (T::*)
+						(
+							SmartPtr<VTKOutput<dim> > vtkOutput,
+							std::string filename,
+							size_t step,
+							number time,
+							std::string fluxName
+						)>(&T::write_flux),
+						"", "vtkOutput object#filename#step#time#flux name", "", "")
+			.add_method("write_flux",
+						static_cast<void (T::*)
+						(
+							SmartPtr<VTKOutput<dim> > vtkOutput,
+							std::string filename,
+							size_t step,
+							number time,
+							number scale_factor
+						)>(&T::write_flux),
+						"", "vtkOutput object#filename#step#time#scale factor", "", "")
+			.add_method("write_flux",
+						static_cast<void (T::*)
+						(
+							SmartPtr<VTKOutput<dim> > vtkOutput,
+							std::string filename,
+							size_t step,
+							number time
+						)>(&T::write_flux),
+						"", "vtkOutput object#filename#step#time", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "FluxExporter", tag);
+
+		//reg.add_function("calculate_box_nernst_fluxes", &calculate_box_nernst_fluxes<TGridFunction>,
+		//	grp.c_str(), "", "grid function#species component name#potential component name",
+		//	"Calculates a vector-valued grid function which is the Nernst flux density of the given species in every FV box.");
 	}
 
 }
