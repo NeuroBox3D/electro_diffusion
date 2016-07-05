@@ -156,7 +156,8 @@ void vtk_export_ho
 	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
 	const char* filename,
 	size_t step,
-	number time
+	number time,
+	const SubsetGroup& ssg
 )
 {
 	typedef typename TGridFunction::domain_type dom_type;
@@ -263,8 +264,15 @@ void vtk_export_ho
 	u_new->set_layouts(u->layouts());
 #endif
 
-	// return new grid function
-	vtkOutput->print(filename, *u_new, step, time);
+	// print out new grid function on desired subsets
+	bool printAll = ssg.size() == (size_t) u->subset_handler()->num_subsets();
+	if (printAll)
+		vtkOutput->print(filename, *u_new, step, time);
+	else
+	{
+		for (size_t s = 0; s < ssg.size(); ++s)
+			vtkOutput->print_subset(filename, *u_new, ssg[s], step, time);
+	}
 }
 
 
@@ -298,26 +306,68 @@ void vtk_export_ho
 	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
 	const char* filename,
 	size_t step,
-	number time
+	number time,
+	const std::vector<std::string>& vSubset
 )
 {
+	// construct subset group from given subsets
+	SubsetGroup ssg(u->subset_handler());
+	try
+	{
+		if (vSubset.empty())
+			ssg.add_all();
+		else
+			ssg.add(vSubset);
+	}
+	UG_CATCH_THROW("Subsets are faulty.");
+
 	// find highest dim that contains any elements
 	MultiGrid& srcGrid = *u->approx_space()->domain()->grid();
 	if (srcGrid.num_volumes())
 		vtk_export_ho<TGridFunction, TGridFunction::dim >= 3 ? 3 : TGridFunction::dim>
-			(u, vFct, order, vtkOutput, filename, step, time);
+			(u, vFct, order, vtkOutput, filename, step, time, ssg);
 	else if (srcGrid.num_faces())
 		vtk_export_ho<TGridFunction, TGridFunction::dim >= 2 ? 2 : TGridFunction::dim>
-			(u, vFct, order, vtkOutput, filename, step, time);
+			(u, vFct, order, vtkOutput, filename, step, time, ssg);
 	else if (srcGrid.num_edges())
 		vtk_export_ho<TGridFunction, TGridFunction::dim >= 1 ? 1 : TGridFunction::dim>
-			(u, vFct, order, vtkOutput, filename, step, time);
+			(u, vFct, order, vtkOutput, filename, step, time, ssg);
 	else if (srcGrid.num_vertices())
 		vtk_export_ho<TGridFunction, TGridFunction::dim >= 0 ? 0 : TGridFunction::dim>
-			(u, vFct, order, vtkOutput, filename, step, time);
+			(u, vFct, order, vtkOutput, filename, step, time, ssg);
 	else
-		vtk_export_ho<TGridFunction, TGridFunction::dim>(u, vFct, order, vtkOutput, filename, step, time);
+		vtk_export_ho<TGridFunction, TGridFunction::dim>(u, vFct, order, vtkOutput, filename, step, time, ssg);
+}
 
+
+template <typename TGridFunction>
+void vtk_export_ho
+(
+	SmartPtr<TGridFunction> u,
+	const std::vector<std::string>& vFct,
+	size_t order,
+	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
+	const char* filename,
+	const std::vector<std::string>& vSubset
+	)
+{
+	vtk_export_ho(u, vFct, order, vtkOutput, filename, 0, 0.0, vSubset);
+}
+
+
+template <typename TGridFunction>
+void vtk_export_ho
+(
+	SmartPtr<TGridFunction> u,
+	const std::vector<std::string>& vFct,
+	size_t order,
+	SmartPtr<VTKOutput<TGridFunction::domain_type::dim> > vtkOutput,
+	const char* filename,
+	size_t step,
+	number time
+)
+{
+	vtk_export_ho(u, vFct, order, vtkOutput, filename, step, time, std::vector<std::string>());
 }
 
 
@@ -331,7 +381,7 @@ void vtk_export_ho
 	const char* filename
 	)
 {
-	vtk_export_ho(u, vFct, order, vtkOutput, filename, 0, 0.0);
+	vtk_export_ho(u, vFct, order, vtkOutput, filename, 0, 0.0, std::vector<std::string>());
 }
 
 

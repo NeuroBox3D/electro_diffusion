@@ -6,6 +6,7 @@
  */
 
 #include "flux_exporter.h"
+#include "vtk_export_ho.h"
 
 #include "lib_disc/function_spaces/grid_function.h"				// GridFunction
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"		// GeomProvider
@@ -180,24 +181,22 @@ void FluxExporter<TGridFunction>::write_flux
 	// calculate flux as vector-valued grid function
 	SmartPtr<TGridFunction> flux = calc_flux(scale_factor);
 
-	// create GridFunctionVectorData from that
+	// export to vtk
 	std::vector<std::string> flux_cmp_names(dim);
 	if (dim >= 1) flux_cmp_names[0] = std::string("flux_x");
 	if (dim >= 2) flux_cmp_names[1] = std::string("flux_y");
 	if (dim >= 3) flux_cmp_names[2] = std::string("flux_z");
-	SmartPtr<UserData<MathVector<dim>, dim> > flux_vd
-		= make_sp(new GridFunctionVectorData<TGridFunction>(flux, flux_cmp_names));
-
-	// export to vtk using GFVD
 	vtkOutput->clear_selection();
-	vtkOutput->clear_data_selection();
-	vtkOutput->select(flux_vd, fluxName.c_str());
-	size_t sgSz = m_sg.size();
-	for (size_t s = 0; s < sgSz; ++s)
-		vtkOutput->print_subset(filename.c_str(), *flux, m_sg[s], step, time);
+	vtkOutput->select(flux_cmp_names, fluxName.c_str());
+
+	vtk_export_ho<TGridFunction, dim>(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);
+
+	//size_t sgSz = m_sg.size();
+	//for (size_t s = 0; s < sgSz; ++s)
+	//	vtkOutput->print_subset(filename.c_str(), *flux, m_sg[s], step, time);
 
 	// make sure that flux grid function is deleted!
-	vtkOutput->clear_data_selection();
+	//vtkOutput->clear_data_selection();
 }
 
 
@@ -313,7 +312,7 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFVGeom, Dummy>::assemble_flux_e
 			VecSet(grad, 0.0);
 			for (size_t sh = 0; sh < scvf.num_sh(); ++sh)
 				VecScaleAppend(grad, u(_P_,sh), scvf.global_grad(ip, sh));
-			scalarFluxIP += flEx->m_convConst * cAtIP * VecDot(grad, scvf.normal());
+			scalarFluxIP -= flEx->m_convConst * cAtIP * VecDot(grad, scvf.normal());
 
 			// multiply by vector from box center to ip and add to flux
 			for (size_t i = 0; i < dim; ++i)
@@ -324,7 +323,7 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFVGeom, Dummy>::assemble_flux_e
 
 				size_t to = scvf.to();
 				VecScaleAdd(grad, 1.0, scvf.global_ip(ip), -1.0, vDoFPos[to]);
-				f(i, to) += scvf.weight(ip) * scalarFluxIP * grad[i];
+				f(i, to) -= scvf.weight(ip) * scalarFluxIP * grad[i];
 			}
 		}
 	}
