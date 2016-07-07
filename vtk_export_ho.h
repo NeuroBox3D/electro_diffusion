@@ -12,6 +12,8 @@
 #include "lib_disc/function_spaces/dof_position_util.h"							// DoFPosition
 #include "lib_grid/parallelization/parallel_refinement/parallel_refinement.h"	// ParallelGlobalRefiner_MultiGrid
 #include "lib_disc/io/vtkoutput.h"												// VTKOutput
+#include "lib_grid/algorithms/debug_util.h"										// ElementDebugInfo
+#include "lib_grid/file_io/file_io.h"
 
 namespace ug {
 namespace nernst_planck {
@@ -119,28 +121,38 @@ inline void interpolate_from_original_fct
 	static const int dim = dom_type::dim;
 	typedef typename DoFDistribution::traits<TElem>::const_iterator const_iter_type;
 
-	const_iter_type elem_iter = u_new->template begin<TElem>();
-	const_iter_type iterEnd = u_new->template end<TElem>();
-
-	std::vector<DoFIndex> ind;
-	for (; elem_iter != iterEnd; ++elem_iter)
+	// interpolate subset-wise
+	size_t numSubsets = u_new->num_subsets();
+	for (size_t si = 0; si < numSubsets; ++si)
 	{
-		u_new->inner_dof_indices(*elem_iter, fct, ind);
+		if (!u_new->is_def_in_subset(fct, si)) continue;
 
-		// get dof positions
-		std::vector<MathVector<dim> > globPos;
-		InnerDoFPosition<dom_type>(globPos, *elem_iter, *u_new->domain(), lfeid);
+		const_iter_type elem_iter = u_new->template begin<TElem>(si);
+		const_iter_type iterEnd = u_new->template end<TElem>(si);
 
-		UG_ASSERT(globPos.size() == ind.size(), "#DoF mismatch");
-
-		// write values in new grid function
-		for (size_t dof = 0; dof < ind.size(); ++dof)
+		std::vector<DoFIndex> ind;
+		for (; elem_iter != iterEnd; ++elem_iter)
 		{
-			if (!u_orig.evaluate(DoFRef(*u_new, ind[dof]), globPos[dof]))
+			u_new->inner_dof_indices(*elem_iter, fct, ind);
+
+			// get dof positions
+			std::vector<MathVector<dim> > globPos;
+			InnerDoFPosition<dom_type>(globPos, *elem_iter, *u_new->domain(), lfeid);
+
+			UG_ASSERT(globPos.size() == ind.size(),
+				"#DoF mismatch: InnerDoFPosition() found " << globPos.size()
+				<< ", but grid function has " << ind.size() << std::endl
+				<< "on " << ElementDebugInfo(*u_new->domain()->grid(), *elem_iter) << ".");
+
+			// write values in new grid function
+			for (size_t dof = 0; dof < ind.size(); ++dof)
 			{
-				DoFRef(*u_new, ind[dof]) = std::numeric_limits<number>::quiet_NaN();
-				//UG_THROW("Interpolation onto new grid did not succeed.\n"
-				//		 "DoF with coords " << globPos[dof] << " is out of range.");
+				if (!u_orig.evaluate(DoFRef(*u_new, ind[dof]), globPos[dof]))
+				{
+					DoFRef(*u_new, ind[dof]) = std::numeric_limits<number>::quiet_NaN();
+					//UG_THROW("Interpolation onto new grid did not succeed.\n"
+					//		 "DoF with coords " << globPos[dof] << " is out of range.");
+				}
 			}
 		}
 	}
@@ -179,7 +191,7 @@ void vtk_export_ho
 	UG_CATCH_THROW("Temporary domain could not be created.");
 	SmartPtr<dom_type> destDom = make_sp(dom_ptr);
 
-	// copy grid from old domain to new domain
+	// copy grid from old domain to new domain (into a flat grid!)
 	try	{CopySelected(destDom, srcDom, srcSel);}
 	UG_CATCH_THROW("Temporary grid could not be created.");
 
@@ -216,7 +228,7 @@ void vtk_export_ho
 			std::string subsets;
 			for (int si = 0; si < num_subsets; ++si)
 			{
-				if (fg.function_pattern()->is_def_in_subset(fg.unique_id(fct), si))
+				if (fg.function_pattern()->is_def_in_subset(fct, si))
 					subsets += std::string(",") + fg.function_pattern()->subset_name(si);
 			}
 			if (!subsets.empty())
@@ -235,7 +247,7 @@ void vtk_export_ho
 	// interpolate onto new grid
 	for (size_t fct = 0; fct < fg.size(); ++fct)
 	{
-		const LFEID lfeid = u_new->dof_distribution()->lfeid(fg[fct]);
+		const LFEID lfeid = u_new->dof_distribution()->lfeid(fct);
 
 		GlobalGridFunctionNumberData<TGridFunction, trueDim> ggfnd =
 			GlobalGridFunctionNumberData<TGridFunction, trueDim>(u, fg.name(fct));

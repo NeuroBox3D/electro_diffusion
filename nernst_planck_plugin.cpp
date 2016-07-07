@@ -368,6 +368,11 @@ static void Domain(Registry& reg, string grp)
 	reg.add_function("set_distro_adjuster", &set_distro_adjuster<TDomain>, grp.c_str(), "", "", "");
 #endif
 
+	// mark_global
+	{
+		reg.add_function("mark_global", &mark_global<TDomain>, grp.c_str(), "", "refiner#approx space", "");
+	}
+
 	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
 

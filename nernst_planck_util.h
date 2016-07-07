@@ -12,6 +12,7 @@
 #include "common/common.h"
 #include "lib_disc/function_spaces/approximation_space.h"
 #include "lib_disc/function_spaces/grid_function.h"
+#include "lib_grid/refinement/refiner_interface.h"			// IRefiner
 
 #include <iostream>
 #include <fstream>
@@ -117,6 +118,10 @@ void scale_dimless_vector
 	ConstSmartPtr<TGridFunction> dimlessVecIn,
 	const std::vector<number>& scalingFactors
 );
+
+
+template <typename TDomain>
+void mark_global(SmartPtr<IRefiner> refiner, SmartPtr<ApproximationSpace<TDomain> > approx);
 
 
 

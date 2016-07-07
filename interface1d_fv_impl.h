@@ -925,23 +925,6 @@ void Interface1D<TDomain, TAlgebra>::adjust_jacobian
 )
 {
 /*
-#ifdef UG_PARALLEL
-	// check parallel storage type
-	if (pcl::NumProcs() > 1 &&
-		(!u.has_storage_type(PST_CONSISTENT)))
-	{
-		UG_THROW("Expected solution to have parallel storage type PST_CONSISTENT,\n"
-				 "but it does not. PST is '" << u.get_storage_type() << "'.");
-	}
-
-	// J is supposed to have PST "additive" before application of constraints
-	// (however, this can not be checked for here since the status is not set but after
-	// the application of all constraints in domain_disc_impl.h).
-	// It will still have PST "additive" afterwards.
-#endif
-*/
-
-/*
 // DEBUG (serial!): write constraint map to file
 typename std::map<size_t, ConstraintInfo>::iterator it = m_constraintMap.begin();
 typename std::map<size_t, ConstraintInfo>::iterator itEnd = m_constraintMap.end();
@@ -986,7 +969,7 @@ outFile.close();
 			if (constrainerMapIt != constrainerMap.end())
 			{
 				// store constrained col index until row_iterator reaches end
-				// do that only of constrainer is not hanging and type is CT_CONSTRAINTS
+				// do that only if constrainer is not hanging and type is CT_CONSTRAINTS
 				// OR if constrainer is hanging and type is CT_MAY_DEPEND_ON_HANGING
 				if ((!constrainerMapIt->second.constrainerIsHanging && type == CT_CONSTRAINTS)
 					|| (constrainerMapIt->second.constrainerIsHanging && type == CT_MAY_DEPEND_ON_HANGING))
@@ -1342,8 +1325,7 @@ void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 )
 {
 	// only adapt BEFORE hanging nodes adaption (as coarse grid node can never be hanging)
-	if (type != CT_MAY_DEPEND_ON_HANGING)
-		return;
+	if (type != CT_CONSTRAINTS) return;
 
 	// get constraint info for dof distros
 	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::iterator CIIter;

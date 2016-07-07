@@ -530,6 +530,26 @@ void scale_dimless_vector
 
 
 
+template <typename TDomain>
+void mark_global(SmartPtr<IRefiner> refiner, SmartPtr<ApproximationSpace<TDomain> > approx)
+{
+	typedef typename domain_traits<TDomain::dim>::element_type elem_type;
+	typedef typename DoFDistribution::traits<elem_type>::const_iterator const_iterator;
+
+	// get surface dof distribution
+	ConstSmartPtr<DoFDistribution> dd = approx->dof_distribution(GridLevel(), false);
+
+	const_iterator iter = dd->template begin<elem_type>();
+	const_iterator iterEnd = dd->template end<elem_type>();
+
+//	loop elements for marking
+	for (; iter != iterEnd; ++iter)
+		refiner->mark(*iter, RM_REFINE);
+}
+
+
+
+
 
 } // namspace calciumDynamics
 } // namespace ug

@@ -97,7 +97,8 @@ void FluxExporter<TGridFunction>::set_subsets(const std::vector<std::string>& vS
 
 			// if chosen by user, throw
 			else
-				UG_COND_THROW(ssdim != dim , "Only subsets of full domain dim allowed.")
+				UG_COND_THROW(ssdim != dim , "Only subsets of full domain dim (" << dim << ") allowed, "
+						"but subset " << m_sh->get_subset_name(si) << " has dim = " << ssdim << ".");
 		}
 	}
 

@@ -55,7 +55,9 @@ class InterfaceDistroAdjuster
 			bool createVerticalInterfaces
 		);
 
+#if 0
 		void adjust_horizontal_interfaces(const GridMessage_Creation& msg);
+#endif
 
 		void add_interface(SmartPtr<IInterface1D> intf)
 		{m_vIntf.push_back(intf);}
