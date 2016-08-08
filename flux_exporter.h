@@ -11,6 +11,7 @@
 
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"	// IConstraint
 #include "lib_disc/io/vtkoutput.h"									// VTKOutput
+#include "lib_disc/spatial_disc/disc_util/conv_shape.h"				// Upwinding
 
 #include <vector>
 #include <string>
@@ -37,6 +38,7 @@ class FluxExporter
 		void set_conv_const(number conv_const) {m_convConst = conv_const;}
 		void set_quad_order(number quadOrder) {m_quadOrder = quadOrder;}
 		void set_hanging_constraint(SmartPtr<IConstraint<algebra_type> > constr) {m_hangingConstraint = constr;}
+		void set_upwind(SmartPtr<IConvectionShapes<dim> > shapes) {m_spConvShape = shapes;}
 
 		void set_subsets(const std::vector<std::string>& vSubsets);
 		void set_subsets(const char* cSubsets);
@@ -77,6 +79,16 @@ class FluxExporter
 			std::string fluxName
 		) {write_flux(vtkOutput, filename, step, time, fluxName, 1.0);}
 
+
+		void write_box_fluxes
+		(
+			std::string filename,
+			size_t step,
+			number time,
+			std::string fluxName,
+			number scale_factor
+		);
+
 	protected:
 		template <typename TElem>
 		void add_side_subsets(MultiGrid& mg, GridObject* elem, std::set<int>& sss);
@@ -86,7 +98,7 @@ class FluxExporter
 		{
 			AssembleWrapper
 			(
-				const FluxExporter<TGridFunction>* _flEx,
+				FluxExporter<TGridFunction>* _flEx,
 				SmartPtr<TGridFunction> _flux,
 				SmartPtr<TGridFunction> _vol,
 				int _si
@@ -99,7 +111,7 @@ class FluxExporter
 				flEx->assemble<hanging, order, TElem>(flux, vol, si);
 			}
 
-			const FluxExporter<TGridFunction>* flEx;
+			FluxExporter<TGridFunction>* flEx;
 			SmartPtr<TGridFunction> flux;
 			SmartPtr<TGridFunction> vol;
 			int si;
@@ -108,7 +120,7 @@ class FluxExporter
 		friend struct AssembleWrapper;
 
 		template <bool hanging, int order, typename TElem>
-		void assemble(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol, int si) const;
+		void assemble(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol, int si);
 
 		template <int order>
 		void assemble(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol);
@@ -118,7 +130,7 @@ class FluxExporter
 		template <typename TFVGeom, typename Dummy = void>
 		struct prep_elem_loop
 		{
-			prep_elem_loop(const FluxExporter<TGridFunction>* flEx, const ReferenceObjectID roid);
+			prep_elem_loop(FluxExporter<TGridFunction>* flEx, const ReferenceObjectID roid);
 		};
 		template <typename TFVGeom, typename Dummy>
 		friend struct prep_elem_loop;
@@ -128,7 +140,7 @@ class FluxExporter
 		template <typename TElem, int dim, template <class, int> class TFV1Geom, typename Dummy>
 		struct prep_elem_loop<TFV1Geom<TElem, dim>, Dummy>
 		{
-			prep_elem_loop(const FluxExporter<TGridFunction>* flEx, const ReferenceObjectID roid);
+			prep_elem_loop(FluxExporter<TGridFunction>* flEx, const ReferenceObjectID roid);
 		};
 
 
@@ -138,7 +150,7 @@ class FluxExporter
 		{
 			prep_elem
 			(
-				const FluxExporter<TGridFunction>* flEx,
+				FluxExporter<TGridFunction>* flEx,
 				GridObject* elem,
 				const std::vector<MathVector<FluxExporter<TGridFunction>::dim> >& vCornerCoords
 			);
@@ -153,7 +165,7 @@ class FluxExporter
 		{
 			prep_elem
 			(
-				const FluxExporter<TGridFunction>* flEx,
+				FluxExporter<TGridFunction>* flEx,
 				GridObject* elem,
 				const std::vector<MathVector<FluxExporter<TGridFunction>::dim> >& vCornerCoords
 			);
@@ -166,7 +178,7 @@ class FluxExporter
 		{
 			assemble_flux_elem
 			(
-				const FluxExporter<TGridFunction>* flEx,
+				FluxExporter<TGridFunction>* flEx,
 				LocalVector& f,
 				const LocalVector& u,
 				GridObject* elem,
@@ -183,7 +195,7 @@ class FluxExporter
 		{
 			assemble_flux_elem
 			(
-				const FluxExporter<TGridFunction>* flEx,
+				FluxExporter<TGridFunction>* flEx,
 				LocalVector& f,
 				const LocalVector& u,
 				GridObject* elem,
@@ -216,6 +228,23 @@ class FluxExporter
 		SmartPtr<TGridFunction> calc_flux(number scale_factor);
 
 	protected:
+		struct CmpCoords
+		{
+		    bool operator() (const MathVector<dim>& a, const MathVector<dim>& b) const
+		    {
+		    	for (size_t d = 0; d < dim; ++d)
+		    	{
+		    		const number a_d = a[d];
+		    		const number b_d = b[d];
+		    		const bool equal = fabs(a_d-b_d) < 1e-8*(1e-8+std::max(fabs(a_d),fabs(b_d)));
+					if (!equal) return a_d < b_d;
+		    	}
+
+		    	return false;
+		    }
+		};
+
+	protected:
 		SmartPtr<TGridFunction> m_u;
 		ConstSmartPtr<sh_type> m_sh;
 		FunctionGroup m_fg;
@@ -232,7 +261,12 @@ class FluxExporter
 
 		int m_quadOrder;
 
+		bool m_bWriteFluxMap;
+		typedef std::map<MathVector<dim>, std::pair<MathVector<dim>, number>, CmpCoords> FluxMap;
+		FluxMap m_fluxMap;
+
 		SmartPtr<IConstraint<algebra_type> > m_hangingConstraint;
+		SmartPtr<IConvectionShapes<dim> > m_spConvShape;
 };
 
 } // namespace nernst_planck

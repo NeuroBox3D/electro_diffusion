@@ -40,8 +40,7 @@ void InterfaceRefMarkAdjuster::ref_marks_changed
 	else if (grid.num_edges()) dim = 1;
 
 	UG_COND_THROW(dim < 2, "This refinement mark adjuster only works for grids of dimension 2 or 3.");
-*/
-
+	 */
 
 
 	// EDGES //

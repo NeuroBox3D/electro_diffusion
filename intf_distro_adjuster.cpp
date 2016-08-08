@@ -151,12 +151,30 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 		sv_it_type it = sv.begin<Vertex>(constrdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
 		sv_it_type it_end = sv.end<Vertex>(constrdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
 
+		size_t intfSrfLvl;
+		if (it != it_end)
+		{
+			sv_it_type it1d = sv.begin<Vertex>(in1dSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
+			sv_it_type it1d_end = sv.end<Vertex>(in1dSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
+			UG_COND_THROW(it1d == it1d_end, "Grid contains surface interface constrained, "
+											"but not the necessary 1d interface node.");
+
+			sv_it_type ithd = sv.begin<Vertex>(inhdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
+			sv_it_type ithd_end = sv.end<Vertex>(inhdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
+			UG_COND_THROW(ithd == ithd_end, "Grid contains surface interface constrained, "
+											"but not the necessary hd interface node.");
+
+			intfSrfLvl = mg.get_level(*it1d);
+			UG_COND_THROW(intfSrfLvl != (size_t) mg.get_level(*ithd), "Surface level of 1d and hd interface nodes are not identical.\n"
+																	 "This cannot be handled by the current implementation.");
+		}
+
 		for (; it != it_end; ++it)
 		{
 			if (sel.get_selection_status(*it) & (IS_NORMAL | IS_VSLAVE))
-				++nSelected[nLvl];
+				++nSelected[intfSrfLvl];
 			else
-				++nUnselected[nLvl];
+				++nUnselected[intfSrfLvl];
 		}
 
 		// now iterate level constrained
@@ -200,7 +218,7 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 				levelVertices[lv].insert(*ithd);
 			}
 		}
-
+/*
 	// 2b. add surface interface nodes for surface constrained
 		if (nSelected[nLvl])
 		{
@@ -222,11 +240,52 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 				levelVertices[mg.get_level(*ithd)].insert(*ithd);
 			}
 		}
+*/
+	// 3. treat root nodes
+		if (partitionForLocalProc)
+		{
+			if (nUnselected[0])
+			{
+				sh_it_type it1d = m_sh->begin<Vertex>(in1dSI, 0);
+				sh_it_type it1d_end = m_sh->end<Vertex>(in1dSI, 0);
 
-	// 3. AssignVerticalMasterAndSlaveStates
+				sh_it_type ithd = m_sh->begin<Vertex>(inhdSI, 0);
+				sh_it_type ithd_end = m_sh->end<Vertex>(inhdSI, 0);
+
+				if (it1d != it1d_end && !dgm.contains_status(*it1d, ES_V_SLAVE))
+				{
+//UG_LOGN("Selecting 1d node " << *it1d << " on level 0 as VMaster for local proc (unselected root).");
+					sel.select(*it1d, sel.get_selection_status(*it1d) | IS_VMASTER);
+				}
+				if (ithd != ithd_end && !dgm.contains_status(*ithd, ES_V_SLAVE))
+				{
+//UG_LOGN("Selecting hd node " << *ithd << " on level 0 as VMaster for local proc (unselected root).");
+					sel.select(*ithd, sel.get_selection_status(*ithd) | IS_VMASTER);
+				}
+			}
+		}
+		else
+		{
+			std::set<Vertex*>& vrtSet = levelVertices[0];
+			std::set<Vertex*>::iterator it = vrtSet.begin();
+			std::set<Vertex*>::iterator it_end = vrtSet.end();
+
+			for (; it != it_end; ++it)
+			{
+				if (!dgm.contains_status(*it, ES_V_MASTER))
+				{
+//UG_LOGN("Selecting node " << *it << " on level 0 as VSlave for proc " << pcl::ProcRank() << " (selected root).");
+					sel.select(*it, IS_VSLAVE);
+				}
+			}
+		}
+
+	// It seems to be enough to do this on root elements.
+/*
+	// 4. assign vertical master and slave states:
 		if (!createVerticalInterfaces) continue;
 
-		// now for each level: mark appropriately (level nLvl is surface)
+		// now for each level: mark appropriately
 		for (size_t lv = nLvl-1; lv < nLvl; --lv)
 		{
 			std::set<Vertex*>& vrtSet = levelVertices[lv];
@@ -235,8 +294,6 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 
 			for (; it != it_end; ++it)
 			{
-
-				// find surface/level interface nodes
 				Vertex* vrt = *it;
 
 				if ((sel.get_selection_status(vrt) & IS_VMASTER)
@@ -254,19 +311,23 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 				{
 					Vertex* ch = mg.get_child<Vertex>(vrt, 0);
 					if (!sel.is_selected(ch))
+					{
+//UG_LOGN("Selecting node " << ch << " on level " << lv+1 << " as VMaster (unselected child).");
 						sel.select(ch, IS_VMASTER);
+					}
 				}
 				else if (dgm.contains_status(vrt, ES_V_MASTER))
 				{
 					if (parentIsSelected || (partitionForLocalProc && (lv == 0)))
 					{
+//UG_LOGN("Selecting node " << vrt << " on level " << lv << " as VMaster (remaining vmaster).");
 						sel.select(vrt, IS_VMASTER);
 						continue;
 					}
 					else
 					{
-						sel.deselect(vrt);	// TODO: think about whether this is correct!
-						continue;
+						//sel.deselect(vrt);	// TODO: think about whether this is correct!
+						//continue;
 					}
 				}
 
@@ -274,15 +335,22 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 				if (parent)
 				{
 					if (!sel.is_selected(parent))
+					{
+//UG_LOGN("Selecting node " << vrt << " on level " << lv << " as VSlave (unselected parent).");
 						sel.select(vrt, IS_VSLAVE);
+					}
 				}
 				else
 				{
 					if (dgm.contains_status(vrt, ES_V_SLAVE))
+					{
+//UG_LOGN("Selecting node " << vrt << " on level " << lv << " as VSlave (remaining vslave).");
 						sel.select(vrt, IS_VSLAVE);
+					}
 				}
 			}
 		}
+		*/
 	}
 }
 

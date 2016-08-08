@@ -18,8 +18,10 @@
 #include "lib_disc/function_spaces/dof_position_util.h"			// DoFPosition
 #include "lib_disc/function_spaces/grid_function_user_data.h"	// GridFunctionVectorData
 #include "lib_grid/grid_objects/grid_objects.h"					// geometry_traits<TElem>::REFERENCE_OBJECT_ID
+#include "common/util/string_util.h"							// AppendCounterToString
 
 #include <set>
+#include <limits>
 
 namespace ug {
 namespace nernst_planck {
@@ -34,7 +36,13 @@ FluxExporter<TGridFunction>::FluxExporter
 	std::string cmp_name_pot
 
 )
-: m_u(u), m_diffConst(0.0), m_convConst(0.0), m_quadOrder(-1)
+: m_u(u),
+  m_diffConst(std::numeric_limits<number>::quiet_NaN()),
+  m_convConst(std::numeric_limits<number>::quiet_NaN()),
+  m_quadOrder(-1),
+  m_bWriteFluxMap(false),
+  m_hangingConstraint(SPNULL),
+  m_spConvShape(new ConvectionShapesNoUpwind<dim>)
 {
 	// set subset handler
 	m_sh = m_u->domain()->subset_handler();
@@ -176,8 +184,8 @@ void FluxExporter<TGridFunction>::write_flux
 	UG_COND_THROW(!m_fg.size(), "No functions selected for output.");
 	UG_COND_THROW(!m_sg.size(), "No subsets selected for output.");
 	UG_COND_THROW(!m_vSubset.size(), "No subsets selected for output.");
-	UG_COND_THROW(!m_diffConst, "No diffusion constant (!= 0) specified.");
-	UG_COND_THROW(!m_convConst, "No convection constant (!= 0) specified.");
+	UG_COND_THROW(m_diffConst != m_diffConst, "No diffusion constant specified.");
+	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
 
 	// calculate flux as vector-valued grid function
 	SmartPtr<TGridFunction> flux = calc_flux(scale_factor);
@@ -202,12 +210,88 @@ void FluxExporter<TGridFunction>::write_flux
 
 
 
+template <typename TGridFunction>
+void FluxExporter<TGridFunction>::write_box_fluxes
+(
+	std::string filename,
+	size_t step,
+	number time,
+	std::string fluxName,
+	number scale_factor
+)
+{
+	// some checks first
+	UG_COND_THROW(!m_u.valid(), "Grid function passed in constructor is not (or no longer) valid.");
+	UG_COND_THROW(!m_sh.valid(), "Subset handler of passed grid function is invalid.");
+	UG_COND_THROW(!m_fg.size(), "No functions selected for output.");
+	UG_COND_THROW(!m_sg.size(), "No subsets selected for output.");
+	UG_COND_THROW(!m_vSubset.size(), "No subsets selected for output.");
+	UG_COND_THROW(m_diffConst != m_diffConst, "No diffusion constant specified.");
+	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
+
+	// set flag for writing to flux map
+	m_bWriteFluxMap = true;
+
+	m_fluxMap.clear();
+
+	// calculate flux as vector-valued grid function (ignore return value)
+	calc_flux(scale_factor);
+
+// save flux map contents to .csv file
+
+	// construct name
+	#ifdef UG_PARALLEL
+		if (pcl::NumProcs() > 1)
+			AppendCounterToString(filename, "_p", pcl::ProcRank(), pcl::NumProcs() - 1);
+	#endif
+	AppendCounterToString(filename, "_t", step);
+	filename.append(".csv");
+
+	std::ofstream outFile;
+	outFile.open(filename.c_str(), std::ios_base::out);
+
+	// write fluxes
+	try
+	{
+		// write head
+		std::string header = std::string("coordX");
+		if (dim >= 2) header.append(std::string(",coordY"));
+		if (dim >= 3) header.append(std::string(",coordZ"));
+		header.append(std::string(",fluxX"));
+		if (dim >= 2) header.append(std::string(",fluxY"));
+		if (dim >= 3) header.append(std::string(",fluxZ"));
+		outFile << header << std::endl;
+
+		// write vectors
+		typename FluxMap::const_iterator it = m_fluxMap.begin();
+		typename FluxMap::const_iterator it_end = m_fluxMap.end();
+		for (; it != it_end; ++it)
+		{
+			const MathVector<dim>& coords = it->first;
+			const MathVector<dim>& fluxVec = (it->second).first;
+			const number area = (it->second).second;
+			for (size_t d = 0; d < dim; ++d)
+				outFile << coords[d] << ", ";
+			for (size_t d = 0; d < dim-1; ++d)
+				outFile << fluxVec[d] / area << ", ";
+			outFile << fluxVec[dim-1] / area << std::endl;
+		}
+	}
+	UG_CATCH_THROW("Output file" << filename << " could not be written to.");
+
+	outFile.close();
+
+	// reset flag
+	m_bWriteFluxMap = false;
+}
+
+
 
 template <typename TGridFunction>
 template <typename TFVGeom, typename Dummy>
 FluxExporter<TGridFunction>::prep_elem_loop<TFVGeom, Dummy>::prep_elem_loop
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	const ReferenceObjectID roid
 )
 {
@@ -220,11 +304,17 @@ template <typename TGridFunction>
 template <typename TElem, int dim, template <class, int> class TFV1Geom, typename Dummy>
 FluxExporter<TGridFunction>::prep_elem_loop<TFV1Geom<TElem, dim>, Dummy>::prep_elem_loop
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	const ReferenceObjectID roid
 )
 {
-	// convection shapes?
+	//	init upwind for element type
+	if (!TFV1Geom<TElem, dim>::usesHangingNodes)
+	{
+		TFV1Geom<TElem, dim>& geo = GeomProvider<TFV1Geom<TElem, dim> >::get();
+		if (!flEx->m_spConvShape->template set_geometry_type<TFV1Geom<TElem, dim> >(geo))
+			UG_THROW("Cannot init upwind for element type.");
+	}
 }
 
 
@@ -233,7 +323,7 @@ template <typename TGridFunction>
 template <typename TFVGeom, typename Dummy>
 FluxExporter<TGridFunction>::prep_elem<TFVGeom, Dummy>::prep_elem
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	GridObject* elem,
 	const std::vector<MathVector<FluxExporter<TGridFunction>::dim> >& vCornerCoords
 )
@@ -243,15 +333,13 @@ FluxExporter<TGridFunction>::prep_elem<TFVGeom, Dummy>::prep_elem
 	UG_CATCH_THROW("Failed updating Finite Volume Geometry for elem.");
 }
 
-
-
 // specialize for FV1Geometry and HFV1Geometry
 // (little bit tricky, only these two have the signature template <class, int> class)
 template <typename TGridFunction>
 template<typename TElem, int dim, template <class, int> class TFV1Geom, typename Dummy>
 FluxExporter<TGridFunction>::prep_elem<TFV1Geom<TElem, dim>, Dummy>::prep_elem
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	GridObject* elem,
 	const std::vector<MathVector<FluxExporter<TGridFunction>::dim> >& vCornerCoords
 )
@@ -259,6 +347,14 @@ FluxExporter<TGridFunction>::prep_elem<TFV1Geom<TElem, dim>, Dummy>::prep_elem
 	TFV1Geom<TElem, dim>& geo = GeomProvider<TFV1Geom<TElem, dim> >::get();
 	try {geo.update(elem, &vCornerCoords[0], flEx->m_sh.get());}
 	UG_CATCH_THROW("Failed updating Finite Volume Geometry for elem.");
+
+	if (TFV1Geom<TElem, dim>::usesHangingNodes)
+	{
+		if (flEx->m_spConvShape.valid())
+			if (!flEx->m_spConvShape->template set_geometry_type<TFV1Geom<TElem, dim> >(geo))
+				UG_THROW("Cannot init upwind for element type.");
+	}
+
 }
 
 
@@ -267,7 +363,7 @@ template <typename TGridFunction>
 template<typename TFVGeom, typename Dummy>
 FluxExporter<TGridFunction>::assemble_flux_elem<TFVGeom, Dummy>::assemble_flux_elem
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	LocalVector& f,
 	const LocalVector& u,
 	GridObject* elem,
@@ -315,16 +411,14 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFVGeom, Dummy>::assemble_flux_e
 				VecScaleAppend(grad, u(_P_,sh), scvf.global_grad(ip, sh));
 			scalarFluxIP -= flEx->m_convConst * cAtIP * VecDot(grad, scvf.normal());
 
-			// multiply by vector from box center to ip and add to flux
+			// multiply by half the vector from box center to box center and add to flux
+			size_t to = scvf.to();
+			size_t from = scvf.from();
+			VecScaleAdd(grad, 0.5, vDoFPos[to], -0.5, vDoFPos[from]);
 			for (size_t i = 0; i < dim; ++i)
 			{
-				size_t from = scvf.from();
-				VecScaleAdd(grad, 1.0, scvf.global_ip(ip), -1.0, vDoFPos[from]);
 				f(i, from) += scvf.weight(ip) * scalarFluxIP * grad[i];
-
-				size_t to = scvf.to();
-				VecScaleAdd(grad, 1.0, scvf.global_ip(ip), -1.0, vDoFPos[to]);
-				f(i, to) -= scvf.weight(ip) * scalarFluxIP * grad[i];
+				f(i, to)   += scvf.weight(ip) * scalarFluxIP * grad[i];
 			}
 		}
 	}
@@ -334,7 +428,7 @@ template <typename TGridFunction>
 template<typename TElem, int dim, template <class, int> class TFV1Geom, typename Dummy>
 FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::assemble_flux_elem
 (
-	const FluxExporter<TGridFunction>* flEx,
+	FluxExporter<TGridFunction>* flEx,
 	LocalVector& f,
 	const LocalVector& u,
 	GridObject* elem,
@@ -347,6 +441,30 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::as
 	const size_t _C_ = 0;
 	const size_t _P_ = 1;
 
+	// compute convection shapes
+	size_t nIP = geo.num_scvf();
+	MathMatrix<dim, dim>* vDiffAtIP = new MathMatrix<dim, dim>[nIP];
+	MathVector<dim>* vVelAtIP = new MathVector<dim>[nIP];
+	for (size_t i = 0; i < nIP; ++i)
+	{
+		// not needed
+		//vDiffAtIP[i] = 0.0;
+		//for (size_t d = 0; d < dim; ++d)
+		//	vDiffAtIP[i](d,d) = flEx->m_diffConst;
+
+		VecSet(vVelAtIP[i], 0.0);
+		for (size_t sh = 0; sh < geo.scvf(i).num_sh(); ++sh)
+			VecScaleAppend(vVelAtIP[i], -flEx->m_convConst*u(_P_,sh), geo.scvf(i).global_grad(sh));
+	}
+
+	if (!flEx->m_spConvShape->update(&geo, vVelAtIP, vDiffAtIP, false))
+		UG_THROW("Cannot compute convection shapes.");
+	IConvectionShapes<dim>& convShape = *flEx->m_spConvShape.get();
+
+	delete[] vDiffAtIP;
+	delete[] vVelAtIP;
+
+
 	// loop SCVFs
 	for (size_t s = 0; s < geo.num_scvf(); ++s)
 	{
@@ -358,31 +476,45 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::as
 		MathVector<dim> grad(0.0);
 		for (size_t sh = 0; sh < scvf.num_sh(); ++sh)
 			VecScaleAppend(grad, u(_C_,sh), scvf.global_grad(sh));
-		VecScale(grad, grad, flEx->m_diffConst);
-		scalarFluxIP = -VecDot(grad, scvf.normal());
+		scalarFluxIP = -flEx->m_diffConst * VecDot(grad, scvf.normal());
 
 		// convective term
-		number cAtIP = 0.0;
-		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-			cAtIP += u(_C_, sh) * scvf.shape(sh);
-		VecSet(grad, 0.0);
-		for (size_t sh = 0; sh < scvf.num_sh(); ++sh)
-			VecScaleAppend(grad, u(_P_,sh), scvf.global_grad(sh));
-		scalarFluxIP -= flEx->m_convConst * cAtIP * VecDot(grad, scvf.normal());
+		number conv_flux = 0.0;
+		for (size_t sh = 0; sh < convShape.num_sh(); ++sh)
+			conv_flux += u(_C_, sh) * convShape(s, sh);
+		scalarFluxIP += conv_flux;
 
-		// multiply by vector from box center to ip and add to flux
+		// multiply by vector between box centers and add to flux
 		size_t from = scvf.from();
 		const typename TFV1Geom<TElem, dim>::SCV& scvFrom = geo.scv(from);
 		size_t to = scvf.to();
 		const typename TFV1Geom<TElem, dim>::SCV& scvTo = geo.scv(to);
 
-		VecScaleAdd(grad, 1.0, scvf.global_ip(), -1.0, scvFrom.global_ip());
+		VecScaleAdd(grad, 0.5, scvTo.global_ip(), -0.5, scvFrom.global_ip());
 		for (size_t i = 0; i < dim; ++i)
+		{
 			f(i, from) += scalarFluxIP * grad[i];
+			f(i, to) += scalarFluxIP * grad[i];
+		}
 
-		VecScaleAdd(grad, 1.0, scvf.global_ip(), -1.0, scvTo.global_ip());
-		for (size_t i = 0; i < dim; ++i)
-			f(i, to) -= scalarFluxIP * grad[i];
+		// fill flux map if needed
+		if (flEx->m_bWriteFluxMap)
+		{
+			MathVector<dim> edge_center;
+			VecScaleAdd(edge_center, 0.5, scvTo.global_ip(), 0.5, scvFrom.global_ip());
+			VecNormalize(grad, grad);
+			VecScale(grad, grad, scalarFluxIP);
+			typename FluxMap::iterator it = flEx->m_fluxMap.find(edge_center);
+			if (it != flEx->m_fluxMap.end())
+			{
+				MathVector<dim>& vecFlux = (it->second).first;
+				number& area = (it->second).second;
+				VecAdd(vecFlux, vecFlux, grad);
+				area += VecLength(scvf.normal());
+			}
+			else
+				flEx->m_fluxMap[edge_center] = std::make_pair(grad, VecLength(scvf.normal()));
+		}
 	}
 }
 
@@ -509,7 +641,7 @@ void FluxExporter<TGridFunction>::assemble
 	SmartPtr<TGridFunction> flux,
 	SmartPtr<TGridFunction> vol,
 	int si
-) const
+)
 {
 	typedef typename TGridFunction::domain_type dom_type;
 	typedef typename DoFDistribution::traits<TElem>::const_iterator it_type;

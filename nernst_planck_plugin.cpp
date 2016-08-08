@@ -19,7 +19,9 @@
 #include "order.h"
 #include "charge_marking.h"
 #include "intf_refMarkAdjuster.h"
+#include "extension_refMarkAdjuster.h"
 #include "flux_exporter.h"
+#include "pnp_upwind.h"
 
 #ifdef UG_PARALLEL
 	#include "intf_distro_adjuster.h"
@@ -198,6 +200,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("set_conv_const", &T::set_conv_const, "", "convection constant", "", "")
 			.add_method("set_quad_order", &T::set_quad_order, "", "order", "", "")
 			.add_method("set_hanging_constraint", &T::set_hanging_constraint, "", "constraint for hanging nodes", "", "")
+			.add_method("set_upwind", &T::set_upwind, "", "upwind scheme", "")
 			.add_method("set_subsets", static_cast<void (T::*) (const std::vector<std::string>&)>(&T::set_subsets), "", "subsets as vector of string", "", "")
 			.add_method("set_subsets", static_cast<void (T::*) (const char* cSubsets)>(&T::set_subsets), "", "subsets as comma-separated c-string", "", "")
 			.add_method("write_flux",
@@ -240,6 +243,16 @@ static void DomainAlgebra(Registry& reg, string grp)
 							number time
 						)>(&T::write_flux),
 						"", "vtkOutput object#filename#step#time", "", "")
+			.add_method("write_box_fluxes",
+						static_cast<void (T::*)
+						(
+							std::string filename,
+							size_t step,
+							number time,
+							std::string fluxName,
+							number scale_factor
+						)>(&T::write_box_fluxes),
+						"", "filename#step#time#flux name#scale factor", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FluxExporter", tag);
 
@@ -332,6 +345,19 @@ static void Domain(Registry& reg, string grp)
 		reg.add_class_to_group(name, "PNP1D_FV", tag);
 	}
 
+	// PNPUpwind
+	{
+		typedef PNPUpwind<TDomain::dim> T;
+		typedef IConvectionShapes<TDomain::dim> TBase;
+		string nameBase = string("PNPUpwind");
+		string name = nameBase;	name.append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_constructor()
+			.add_method("set_exp_factor", &T::set_exp_factor, "", "exponential weighing factor", "default is 1e2", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, nameBase, tag);
+	}
+
 	// ChargeMarking
 	{
 		typedef ChargeMarking<TDomain> T;
@@ -373,6 +399,22 @@ static void Domain(Registry& reg, string grp)
 		reg.add_function("mark_global", &mark_global<TDomain>, grp.c_str(), "", "refiner#approx space", "");
 	}
 
+
+	// extension refinement mark adjuster
+	{
+		typedef ExtensionRefMarkAdjuster<TDomain> T;
+		string nameBase = string("ExtensionRefMarkAdjuster");
+		string name = nameBase;	name.append(suffix);
+		reg.add_class_<T>(name, grp)
+		    .template add_constructor<void (*)(SmartPtr<TDomain>, std::vector<number>, const std::string)>
+				("subset handler#direction (as vector)#useless subset")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, nameBase, tag);
+	}
+
+	reg.add_function("add_extension_ref_mark_adjuster", &add_extension_ref_mark_adjuster<TDomain>, grp.c_str(), "", "", "");
+
+
 	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
 
@@ -390,7 +432,6 @@ static void Dimension(Registry& reg, string grp)
 {
 	string suffix = GetDimensionSuffix<dim>();
 	string tag = GetDimensionTag<dim>();
-
 }
 
 /**
@@ -478,7 +519,6 @@ static void Common(Registry& reg, string grp)
 	}
 
 	reg.add_function("add_interface_ref_mark_adjuster", &add_interface_ref_mark_adjuster, grp.c_str(), "", "", "");
-
 }
 
 }; // end Functionality
@@ -500,7 +540,7 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 
 	try{
 		RegisterCommon<Functionality>(*reg,grp);
-		//RegisterDimensionDependent<Functionality>(*reg,grp);
+		RegisterDimensionDependent<Functionality>(*reg,grp);
 		RegisterDomainDependent<Functionality>(*reg,grp);
 		//RegisterAlgebraDependent<Functionality>(*reg,grp);
 		RegisterDomainAlgebraDependent<Functionality>(*reg,grp);

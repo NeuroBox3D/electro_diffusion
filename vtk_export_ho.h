@@ -172,6 +172,22 @@ void vtk_export_ho
 	const SubsetGroup& ssg
 )
 {
+	// for order 1, use the given grid function as is
+	if (order == 1)
+	{
+		// print out new grid function on desired subsets
+		bool printAll = ssg.size() == (size_t) u->subset_handler()->num_subsets();
+		if (printAll)
+			vtkOutput->print(filename, *u, step, time);
+		else
+		{
+			for (size_t s = 0; s < ssg.size(); ++s)
+				vtkOutput->print_subset(filename, *u, ssg[s], step, time);
+		}
+
+		return;
+	}
+
 	typedef typename TGridFunction::domain_type dom_type;
 	typedef typename dom_type::position_attachment_type position_attachment_type;
 	typedef typename TGridFunction::approximation_space_type approx_space_type;

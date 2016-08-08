@@ -55,9 +55,7 @@ class InterfaceDistroAdjuster
 			bool createVerticalInterfaces
 		);
 
-#if 0
-		void adjust_horizontal_interfaces(const GridMessage_Creation& msg);
-#endif
+		//void adjust_horizontal_interfaces(const GridMessage_Creation& msg);
 
 		void add_interface(SmartPtr<IInterface1D> intf)
 		{m_vIntf.push_back(intf);}
@@ -66,7 +64,7 @@ class InterfaceDistroAdjuster
 		SmartPtr<ApproximationSpace<TDomain> > m_approx;
 		SmartPtr<TDomain> m_dom;
 		ConstSmartPtr<MGSubsetHandler> m_sh;
-		MessageHub::SPCallbackId m_spGridCreationCallbackID;
+		//MessageHub::SPCallbackId m_spGridCreationCallbackID;
 
 		std::vector<SmartPtr<IInterface1D> > m_vIntf;
 };
