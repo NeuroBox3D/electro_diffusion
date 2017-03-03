@@ -143,7 +143,7 @@ class PNP1D_FV1: public IElemDisc<TDomain>
 	////////////////////////////
 
 		/// prepare the timestep
-		//virtual void prep_timestep_elem(const number time, const LocalVector& u, GridObject* elem, const MathVector<worldDim> vCornerCoords[]);
+		//virtual void prep_timestep_elem(number future_time, const number time, const LocalVector& u, GridObject* elem, const MathVector<worldDim> vCornerCoords[]);
 
 		///	virtual prepares the loop over all elements of one type
 		template <typename TElem, typename TFVGeom>
