@@ -13,6 +13,16 @@ project(NERNST_PLANCK)
 include(${UG_ROOT_CMAKE_PATH}/ug_plugin_includes.cmake)
 
 
+
+message(STATUS "")
+message(STATUS "Additional options (-DNP) for the nernst_planck plugin")
+
+
+# compile with tetgen 1.5 support
+option(NPTetgen "Tetgen")
+message(STATUS "      Tetgen:   ${NPTetgen} (options are: ON, OFF)")
+
+
 # sources
 set(SOURCES nernst_planck_plugin.cpp
             pnp1d_fv1.cpp
@@ -25,6 +35,7 @@ set(SOURCES nernst_planck_plugin.cpp
             extension_refMarkAdjuster.cpp
             flux_exporter.cpp
             pnp_upwind.cpp
+            morpho_gen.cpp
    )
 
 if (PARALLEL)
@@ -32,11 +43,68 @@ if (PARALLEL)
 endif(PARALLEL)
 
 
+# error if tetgen libs/includes are not found
+if (NPTetgen)
+	UGInstall("tetgen" TETGEN15_PATH)
+	unset(TETGEN15_LIBS CACHE)
+	find_library(TETGEN15_LIBS NAMES tet PATHS ${TETGEN15_PATH})
+	if (NOT TETGEN15_LIBS)
+		message(FATAL_ERROR "ERROR: TetGen-1.5 library not found in ${TETGEN15_PATH}.")
+	endif (NOT TETGEN15_LIBS)
+	
+	find_path(TETGEN15_INCLUDE_PATH tetgen.h PATHS ${TETGEN15_PATH})
+	if (NOT TETGEN15_INCLUDE_PATH)
+		message(FATAL_ERROR "ERROR: TetGen-1.5 include file tetgen.h not found in ${TETGEN15_PATH}.")
+	endif (NOT TETGEN15_INCLUDE_PATH)
+endif (NPTetgen)
+
+
+# This will copy the configurable file tetgen_config_cmake.h to
+# the final configuration header tetgen_config.h,
+# setting the #defines as given by the current CMake variables.
+configure_file(tetgen_config_cmake.h tetgen_config.h)
+
+
 if(buildEmbeddedPlugins)
 	# add the sources to ug4's sources
-	EXPORTSOURCES(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
+	ExportSources(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
+
+	# add include path for tetgen_config.h
+	ExportIncludes(${CMAKE_CURRENT_BINARY_DIR})
+	
+	if (NPTetgen)
+		# add definition for tetgen usage to morpho_gen.cpp
+		# Unfortunately, this still results in the whole target (i.e., all of ug)
+		# to be recompiled. This is a known issue when creating MakeFiles with CMake.
+		#ExportSingleFileDefinitions(${CMAKE_CURRENT_SOURCE_DIR}/morpho_gen.cpp "TETGEN_15_ENABLED;TETLIBRARY")
+		
+		# add include path for tetgen.h
+		ExportIncludes(${TETGEN15_INCLUDE_PATH})
+		
+		# add library to link against
+		ExportDependencies(${TETGEN15_LIBS})
+	endif (NPTetgen)
+	
 else(buildEmbeddedPlugins)
 	# create a shared library from the sources and link it against ug4 and external libraries
 	add_library(nernst_planck SHARED ${SOURCES})
-	target_link_libraries(nernst_planck ug4)
+
+	# add include path for tetgen_config.h
+	include_directories(${CMAKE_CURRENT_BINARY_DIR})
+	
+	if (NPTetgen)
+		# add definition for tetgen usage to morpho_gen.cpp
+		#set_property(SOURCE morpho_gen.cpp APPEND PROPERTY COMPILE_DEFINITIONS "TETGEN_15_ENABLED;TETLIBRARY")
+			
+		# add include path for tetgen.h
+		include_directories(${TETGEN15_INCLUDE_PATH})
+	
+		# add tetgen library to link against
+		set(additionalLibs ${additionalLibs} ${TETGEN15_LIBS})
+	endif (NPTetgen)
+	
+	# add MPM to linker (importCommand, remove that in time)
+	set (additionalLibs ${additionalLibs} MembranePotentialMapping)
+	
+	target_link_libraries(nernst_planck ug4 ${additionalLibs})
 endif(buildEmbeddedPlugins)

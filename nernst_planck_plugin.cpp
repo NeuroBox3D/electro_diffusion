@@ -22,6 +22,7 @@
 #include "extension_refMarkAdjuster.h"
 #include "flux_exporter.h"
 #include "pnp_upwind.h"
+#include "morpho_gen.h"
 
 #ifdef UG_PARALLEL
 	#include "intf_distro_adjuster.h"
@@ -92,7 +93,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef IInterface1D TBase2;
 		string name = string("Interface1D").append(suffix);
 		reg.add_class_<T, TBase, TBase2>(name, grp)
-			.add_method("update", static_cast<void (T::*) ()>(&T::update));
+			.add_method("update", static_cast<void (T::*) ()>(&T::update))
+			.add_method("determine_subset_indices", &T::determine_subset_indices)
+			.add_method("set_approx_space", &T::set_approx_space);
 			//.add_method("check_values_at_interface", &T::check_values_at_interface, "", "solution grid function", "", "");
 		reg.add_class_to_group(name, "Interface1D", tag);
 	}
@@ -519,6 +522,21 @@ static void Common(Registry& reg, string grp)
 	}
 
 	reg.add_function("add_interface_ref_mark_adjuster", &add_interface_ref_mark_adjuster, grp.c_str(), "", "", "");
+
+	// morphology generator
+	{
+		typedef MorphoGen T;
+		string name = string("MorphoGen");
+		reg.add_class_<T>(name, grp)
+			.add_constructor()
+			.add_method("set_num_neck_filaments", &T::set_num_neck_filaments, "", "", "")
+			.add_method("set_num_filaments", &T::set_num_filaments, "", "", "")
+			.add_method("set_fil_anisotropic", &T::set_fil_anisotropic, "", "", "")
+			.add_method("create_dendrite", &T::create_dendrite, "", "", "")
+			.add_method("create_dendrite_2d", &T::create_dendrite_2d, "", "", "")
+			.add_method("create_dendrite_1d", &T::create_dendrite_1d, "", "", "")
+			.set_construct_as_smart_pointer(true);
+	}
 }
 
 }; // end Functionality

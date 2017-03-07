@@ -371,6 +371,12 @@ class Interface1D
 		void approximation_space_changed();
 
 	public:
+		/// determine subset indices from external subset handler (only for debug purposes)
+		void determine_subset_indices(SmartPtr<ISubsetHandler> spSH);
+
+		/// set underlying approx space manually (only for debug purposes)
+		void set_approx_space(SmartPtr<ApproximationSpace<TDomain> > spApprox);
+
 		/// update constraint index information
 		void update();
 

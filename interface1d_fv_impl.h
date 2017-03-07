@@ -298,6 +298,26 @@ void Interface1D<TDomain, TAlgebra>::approximation_space_changed()
 
 
 template <typename TDomain, typename TAlgebra>
+void Interface1D<TDomain, TAlgebra>::determine_subset_indices(SmartPtr<ISubsetHandler> spSH)
+{
+	m_siConstr = spSH->get_subset_index(m_ssiConstr.c_str());
+	m_siIntf[0] = spSH->get_subset_index(m_ssiIntf[0].c_str());
+	m_siIntf[1] = spSH->get_subset_index(m_ssiIntf[1].c_str());
+
+	if (m_siConstr < 0 || m_siIntf[0] < 0 || m_siIntf[1] < 0)	// previous call gives -1 if failed
+		UG_THROW("At least one of the given subsets is not known to the given subset handler");
+}
+
+
+template <typename TDomain, typename TAlgebra>
+void Interface1D<TDomain, TAlgebra>::set_approx_space(SmartPtr<ApproximationSpace<TDomain> > spApprox)
+{
+	this->set_approximation_space(spApprox);
+}
+
+
+
+template <typename TDomain, typename TAlgebra>
 void Interface1D<TDomain, TAlgebra>::update()
 {
 	std::vector<SmartPtr<DoFDistribution> > vspdd = this->approximation_space()->dof_distributions();
@@ -512,6 +532,8 @@ template <typename TElem, typename TContainingElem>
 TElem* Interface1D<TDomain, TAlgebra>::get_constrainer(TElem* constrd)
 {
 	typedef typename MultiGrid::traits<TContainingElem>::secure_container cont_list;
+
+	UG_COND_THROW(!this->approximation_space().get(), "No approximation space available.")
 
 	SmartPtr<TDomain> dom = this->approximation_space()->domain();
 	MultiGrid& mg = *dom->grid();
