@@ -21,6 +21,7 @@
 #include "lib_grid/refinement/projectors/sphere_projector.h"	// SphereProjector
 #include "lib_grid/refinement/regular_refinement.h"	// Refine
 #include "lib_grid/algorithms/geom_obj_util/volume_util.h"	// FixOrientation
+#include "lib_grid/algorithms/orientation_util.h"	// FixOrientation
 #include "lib_grid/algorithms/geom_obj_util/face_util.h"	// Triangulate, CalculateFaceNormals, FixFaceOrientation
 #include "lib_grid/algorithms/remove_duplicates_util.h"	// RemoveDuplicates
 #include "lib_grid/algorithms/grid_generation/triangle_fill_sweep_line.h"	// TriangleFillSweepLine
