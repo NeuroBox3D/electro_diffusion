@@ -30,8 +30,23 @@ template <typename TDomain>
 void reorder_dofs(SmartPtr<ApproximationSpace<TDomain> > approxSpace, const char* constrained);
 
 
+/**
+ * This function implements algorithm LEX M from
+ * Rose et al.: "Algorithmic aspects of vertex elimination on graphs"
+**/
+void lex_order
+(
+	std::vector<size_t>& newIndOut,
+	const std::vector<std::vector<size_t> >& vAdj,
+	bool preserveConsec = true
+);
+
+template <typename TDomain>
+void reorder_dof_distros_lex(SmartPtr<ApproximationSpace<TDomain> > approx);
+
+
+
 } // namespace nernst_planck
 } // namespace ug
-
 
 #endif // __UG__PLUGINS__NERNST_PLANCK__ORDER_H__

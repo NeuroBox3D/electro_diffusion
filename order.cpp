@@ -140,14 +140,270 @@ void reorder_dofs(SmartPtr<ApproximationSpace<TDomain> > approxSpace, const char
 
 
 
+
+/*
+struct Label
+{
+	public:
+		Label() {};
+		bool operator<(const Label& l)
+		{
+			size_t min = std::min(m_vL.size(), l.m_vL.size());
+			for (size_t i = 0; i < min; ++i)
+			{
+				if (m_vL[i] < l.m_vL[i]) return true;
+				if (m_vL[i] > l.m_vL[i]) return false;
+			}
+			return l.m_vL.size() > min;
+		}
+
+	private:
+		std::vector<size_t> m_vL;
+};
+*/
+
+
+
+namespace {
+struct LabelCmp
+{
+	LabelCmp(const std::vector<float>& _vL) : vL(_vL) {};
+	bool operator()(const size_t& a, const size_t& b)
+	{ return vL[a] < vL[b];}
+
+	const std::vector<float>& vL;
+};
+}
+
+
+void lex_order
+(
+	std::vector<size_t>& newIndOut,
+	const std::vector<std::vector<size_t> >& vAdj,
+	bool preserveConsec
+)
+{
+	size_t nVrt = vAdj.size();
+
+	std::vector<float> vLabel(nVrt, 1.0);
+	std::vector<bool> vReached(nVrt, false);
+	std::vector<bool> vHandled(nVrt, false);
+
+	// mark all indices without connections as handled
+	for (size_t i = 0; i < nVrt; ++i)
+		if (!vAdj[i].size())
+			vHandled[i] = true;
+
+	// get first unhandled index
+	size_t k = 1;
+	size_t i_unhandled = nVrt - 1;
+	for (; i_unhandled < nVrt; --i_unhandled)
+		if (!vHandled[i_unhandled]) break;
+
+	size_t highestLabelVrt = i_unhandled;
+
+
+	std::vector<size_t> vNewOrder;
+	while (true)
+	{
+		size_t v = highestLabelVrt;
+
+		// assign i to current vertex
+		vNewOrder.push_back(v);
+		vHandled[v] = true;
+
+		// mark v reached
+		vReached[v] = true;
+		std::map<number, std::set<size_t> > mReach;
+
+		// mark all unnumbered verts unreached
+		for (size_t j = 0; j < nVrt; ++j)
+			if (!vHandled[j])
+				vReached[j] = false;
+
+		for (size_t j = 0; j < vAdj[v].size(); ++j)
+		{
+			size_t w = vAdj[v][j];
+			if (vHandled[w]) continue;
+
+			mReach[vLabel[w]].insert(w);
+			vReached[w] = true;
+			vLabel[w] += 0.5;
+			// mark (v,w) as an edge of G*a
+		}
+
+		// search
+		for (size_t j = 1; j <= k; ++j)
+		{
+			std::set<size_t>& labelSet = mReach[(float) j];
+			while (!labelSet.empty())
+			{
+				size_t w = *labelSet.begin();
+				labelSet.erase(w);
+
+				for (size_t k = 0; k < vAdj[w].size(); ++k)
+				{
+					size_t z = vAdj[w][k];
+					if (vReached[z]) continue;
+
+					vReached[z] = true;
+
+					if (vLabel[z] > j)
+					{
+						mReach[vLabel[z]].insert(z);
+						vLabel[z] += 0.5;
+						// mark (v,z) as an edge of G*a
+					}
+					else labelSet.insert(z);
+				}
+			}
+		}
+
+		// sort unnumbered vertices by label value
+		std::vector<size_t> vUnhandled;
+		for (size_t j = 0; j < nVrt; ++j)
+			if (!vHandled[j])
+				vUnhandled.push_back(j);
+
+		// end criterion
+		if (!vUnhandled.size()) break;
+
+		LabelCmp cmp(vLabel);
+		std::stable_sort(vUnhandled.begin(), vUnhandled.end(), cmp);
+
+		// reassign labels to be integers from 0 to k, redefining k appropriately
+		float oldLabel = vLabel[vUnhandled[0]];
+		k = 1.0;
+		vLabel[vUnhandled[0]] = k;
+		for (size_t j = 1; j < vUnhandled.size(); ++j)
+		{
+			float& label = vLabel[vUnhandled[j]];
+			if (label - oldLabel > 0.25)
+			{
+				oldLabel = label;
+				k += 1.0;
+			}
+			label = k;
+		}
+
+		highestLabelVrt = vUnhandled.back();
+	}
+
+	// now assign new indices
+	newIndOut.clear();
+	newIndOut.resize(nVrt, (size_t) -1);
+
+	// If we are ordering based on geometrical connectivity,
+	// we want to keep together indices of the same geometric object.
+	// The input vAdj will therefore only contain adjacency information
+	// for the first DoF of every object.
+	// During the re-ordering, the other DoFs are ignored and only later
+	// inserted into the new order along with their first DoF representative.
+	// Attention: The whole thing only works if on every object,
+	//            the number of DoFs is the same.
+	if (preserveConsec)
+	{
+		size_t cnt = 0;
+
+		for (size_t oldInd = 0; oldInd < nVrt; ++oldInd)
+		{
+			// skip non-sorted indices
+			if (!vAdj[oldInd].size()) continue;
+
+			// get current entry in vNewOrder
+			UG_ASSERT(cnt < vNewOrder.size(), "cnt: " << cnt << ", ordered: " << vNewOrder.size())
+			const size_t newInd = vNewOrder[vNewOrder.size() - 1 - cnt];
+			++cnt;
+
+			// give the current vNewOrder entry the current index
+			UG_ASSERT(newInd < newIndOut.size(), "newInd: " << newInd << ", size: " << newIndOut.size())
+			newIndOut[newInd] = oldInd;
+		}
+
+		// check that all ordered indices have been written
+		if (cnt != vNewOrder.size())
+			UG_THROW("Not all indices sorted that must be sorted: "
+					<< cnt << " written, but should write: " << vNewOrder.size());
+
+		// fill non-sorted indices (preserving consecutive indexing)
+		for (size_t i = 1; i < nVrt; ++i)
+			if (newIndOut[i] == (size_t) -1)
+				newIndOut[i] = newIndOut[i-1] + 1;
+	}
+
+	// If we are ordering based on matrix entries,
+	// any unconnected vertex will simply be moved to the bottom.
+	else
+	{
+		size_t newOrdSz = vNewOrder.size();
+
+		for (size_t i = 0; i < newOrdSz; ++i)
+		{
+			size_t oldInd = vNewOrder[newOrdSz - 1 - i];
+			newIndOut[oldInd] = i;
+		}
+
+		// move unconnected indices to the bottom of the ordering
+		for (size_t i = 0; i < nVrt; ++i)
+		{
+			if (newIndOut[i] == (size_t) -1)
+				newIndOut[i] = newOrdSz++;
+		}
+	}
+
+	// check that permutation is bijective
+	std::vector<size_t> invPerm(nVrt);
+	for (size_t i = 0; i < invPerm.size(); ++i)
+		invPerm[i] = (size_t) (-1);
+
+	for (size_t i = 0; i < invPerm.size(); ++i)
+	{
+		UG_COND_THROW(invPerm[newIndOut[i]] != (size_t) (-1), "not a bijective permutation "
+			"(double mapping to index " << newIndOut[i] << " by indices " << invPerm[newIndOut[i]] << " and " << i << ")!");
+		invPerm[newIndOut[i]] = i;
+	}
+}
+
+
+template <typename TDomain>
+void reorder_dof_distros_lex(SmartPtr<ApproximationSpace<TDomain> > approx)
+{
+	UG_COND_THROW(!approx.valid(), "Approximation space is invalid.");
+	std::vector<SmartPtr<DoFDistribution> > vDD = approx->dof_distributions();
+	ConstSmartPtr<MGSubsetHandler> sh = approx->subset_handler();
+
+	// loop dof distributions
+	for (size_t i = 0; i < vDD.size(); ++i)
+	{
+		SmartPtr<DoFDistribution> dd = vDD[i];
+
+		// get adjacency graph
+		std::vector<std::vector<size_t> > vvConnection;
+		try {dd->get_connections(vvConnection);}
+		UG_CATCH_THROW("No adjacency graph available.");
+
+		// get mapping for LEX M ordering
+		std::vector<size_t> vNewIndex;
+		lex_order(vNewIndex, vvConnection);
+
+		// reorder indices
+		dd->permute_indices(vNewIndex);
+	}
+}
+
+
+
 #ifdef UG_DIM_1
 	template void reorder_dofs<Domain1d>(SmartPtr<ApproximationSpace<Domain1d> >, const char*);
+	template void reorder_dof_distros_lex<Domain1d>(SmartPtr<ApproximationSpace<Domain1d> >);
 #endif
 #ifdef UG_DIM_2
 	template void reorder_dofs<Domain2d>(SmartPtr<ApproximationSpace<Domain2d> >, const char*);
+	template void reorder_dof_distros_lex<Domain2d>(SmartPtr<ApproximationSpace<Domain2d> >);
 #endif
 #ifdef UG_DIM_3
 	template void reorder_dofs<Domain3d>(SmartPtr<ApproximationSpace<Domain3d> >, const char*);
+	template void reorder_dof_distros_lex<Domain3d>(SmartPtr<ApproximationSpace<Domain3d> >);
 #endif
 
 

@@ -300,6 +300,9 @@ static void Domain(Registry& reg, string grp)
 	reg.add_function("reorder_dofs", &reorder_dofs<TDomain>, grp.c_str(),
 					 "", "approximation space#constrained subsets", "Re-orders DoFs in such a way that the "
 					 "constrained indices are last in the order.");
+	reg.add_function("reorder_dof_distros_lex", &reorder_dof_distros_lex<TDomain>, grp.c_str(),
+					 "", "approximation space", "Re-orders DoFs in all the approxSpace's DoFDistros "
+					 "according to lexicographical ordering as proposed by Rose et al.");
 
 	// 1D PNP FV1
 	{
