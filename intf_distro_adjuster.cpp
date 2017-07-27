@@ -18,7 +18,7 @@ namespace nernst_planck {
 
 
 template <typename TDomain>
-void InterfaceDistroAdjuster<TDomain>::collect_neighbors
+void PNPDistroManager<TDomain>::collect_neighbors
 (
 	std::vector<elem_type*>& neighborsOut,
 	elem_type* elem
@@ -103,9 +103,15 @@ void InterfaceDistroAdjuster<TDomain>::collect_neighbors
 
 
 template <typename TDomain>
-InterfaceDistroAdjuster<TDomain>::InterfaceDistroAdjuster(SmartPtr<ApproximationSpace<TDomain> > approx)
-: m_approx(approx), m_dom(approx->domain()), m_sh(m_dom->subset_handler())
+PNPDistroManager<TDomain>::PNPDistroManager(SmartPtr<ApproximationSpace<TDomain> > approx)
+: parmetis::AnisotropyProtector<TDomain>(approx->domain()),
+  m_approx(approx), m_dom(approx->domain()), m_sh(m_dom->subset_handler())
 {
+	// set this class as its own neighbor collector
+	SmartPtr<DualGraphNeighborCollector<elem_type> > spDGNC = make_sp(this);
+	++*spDGNC.refcount_ptr(); // we do not want to accidentally destroy ourselves
+	this->set_neighbor_collector(spDGNC);
+
 	// no longer necessary!
 	//m_spGridCreationCallbackID = m_dom->grid()->message_hub()->register_class_callback(this,
 	//	&ug::nernst_planck::InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces);
@@ -113,7 +119,7 @@ InterfaceDistroAdjuster<TDomain>::InterfaceDistroAdjuster(SmartPtr<Approximation
 
 
 template <typename TDomain>
-void InterfaceDistroAdjuster<TDomain>::adjust
+void PNPDistroManager<TDomain>::adjust
 (
 	MGSelector& sel,
 	bool partitionForLocalProc,
@@ -281,7 +287,7 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 		}
 
 	// It seems to be enough to do this on root elements.
-/*
+
 	// 4. assign vertical master and slave states:
 		if (!createVerticalInterfaces) continue;
 
@@ -350,14 +356,13 @@ void InterfaceDistroAdjuster<TDomain>::adjust
 				}
 			}
 		}
-		*/
 	}
 }
 
 
 #if 0
 template <typename TDomain>
-void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMessage_Creation& msg)
+void PNPDistroManager<TDomain>::adjust_horizontal_interfaces(const GridMessage_Creation& msg)
 {
 	if (msg.msg() != GMCT_CREATION_STOPS) return;
 
@@ -624,7 +629,7 @@ void InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces(const GridMe
 
 
 template <typename TDomain>
-void set_distro_adjuster(SmartPtr<TDomain> dom, SmartPtr<InterfaceDistroAdjuster<TDomain> > adj)
+void set_distro_adjuster(SmartPtr<TDomain> dom, SmartPtr<PNPDistroManager<TDomain> > adj)
 {
 #ifdef UG_PARALLEL
 	DistributedGridManager& dgm = *dom->grid()->distributed_grid_manager();
@@ -636,16 +641,16 @@ void set_distro_adjuster(SmartPtr<TDomain> dom, SmartPtr<InterfaceDistroAdjuster
 
 // explicit template specializations
 #ifdef UG_DIM_1
-	template class InterfaceDistroAdjuster<Domain1d>;
-	template void set_distro_adjuster<Domain1d>(SmartPtr<Domain1d> dom, SmartPtr<InterfaceDistroAdjuster<Domain1d> > adj);
+	template class PNPDistroManager<Domain1d>;
+	template void set_distro_adjuster<Domain1d>(SmartPtr<Domain1d> dom, SmartPtr<PNPDistroManager<Domain1d> > adj);
 #endif
 #ifdef UG_DIM_2
-	template class InterfaceDistroAdjuster<Domain2d>;
-	template void set_distro_adjuster<Domain2d>(SmartPtr<Domain2d> dom, SmartPtr<InterfaceDistroAdjuster<Domain2d> > adj);
+	template class PNPDistroManager<Domain2d>;
+	template void set_distro_adjuster<Domain2d>(SmartPtr<Domain2d> dom, SmartPtr<PNPDistroManager<Domain2d> > adj);
 #endif
 #ifdef UG_DIM_3
-	template class InterfaceDistroAdjuster<Domain3d>;
-	template void set_distro_adjuster<Domain3d>(SmartPtr<Domain3d> dom, SmartPtr<InterfaceDistroAdjuster<Domain3d> > adj);
+	template class PNPDistroManager<Domain3d>;
+	template void set_distro_adjuster<Domain3d>(SmartPtr<Domain3d> dom, SmartPtr<PNPDistroManager<Domain3d> > adj);
 #endif
 
 

@@ -411,11 +411,11 @@ static void Domain(Registry& reg, string grp)
 	}
 
 #ifdef UG_PARALLEL
-	// InterfaceDistroAdjuster
+	// PNPDistroAdjuster
 	{
-		typedef InterfaceDistroAdjuster<TDomain> T;
-		typedef IDualGraphNeighborCollector TBase;
-		string nameBase = string("InterfaceDistroAdjuster");
+		typedef PNPDistroManager<TDomain> T;
+		typedef parmetis::AnisotropyProtector<TDomain> TBase;
+		string nameBase = string("PNPDistroManager");
 		string name = nameBase;	name.append(suffix);
 		reg.add_class_<T, TBase>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)>("approx space")

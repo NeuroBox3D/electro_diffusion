@@ -31,18 +31,39 @@ namespace nernst_planck {
 // of TDomain, but also of refDim which must then be used in the public derivation
 // statement from DualGraphNeighborCollector below.
 
+namespace nernst_planck {
+/**
+ * @brief This class manages all PNP-relevant distribution issues.
+ *
+ * (1) Being derived from DistroAdjuster, it is able to manipulate the domain partitioning
+ *     after the distribution method has been applied.
+ *     This can be used to realize the parallel 1d/3d interfaces where interface nodes
+ *     need to be copied to any proc that holds a part of the interface.
+ * (2) Being derived from DualGraphNeighborCollector, it is able to influence the way
+ *     connections are recorded for the dual graph in the ParMetis distribution method.
+ *     This can be used to correctly record the connections from the first element of the
+ *     1d extensions to the border elements of the 3d side.
+ *     This feature (currently) only works if the whole domain is distributed from one proc.
+ * (3) Being derived from AnisotropyProtector, it is able to manipulate the way the
+ *     dual graph for ParMetis partitioning is created. This can be used to prevent the
+ *     partitioning from having borders along charged membranes.
+ *     This feature (currently) only works if the whole domain is distributed from one proc.
+ *
+ * @todo: Make (2) and (3) work in general distribution conditions.
+ */
 template <typename TDomain>
-class InterfaceDistroAdjuster
-	: public DistroAdjuster,
-	  public DualGraphNeighborCollector<typename grid_dim_traits<TDomain::dim>::grid_base_object>
+class PNPDistroManager
+: public DistroAdjuster,
+  public parmetis::AnisotropyProtector<TDomain>,
+  public DualGraphNeighborCollector<typename grid_dim_traits<TDomain::dim>::grid_base_object>
 {
 	public:
 	typedef typename grid_dim_traits<TDomain::dim>::grid_base_object elem_type;
 	typedef typename grid_dim_traits<TDomain::dim-1>::grid_base_object side_type;
 
 	public:
-		InterfaceDistroAdjuster(SmartPtr<ApproximationSpace<TDomain> > approx);
-		virtual ~InterfaceDistroAdjuster() {};
+		PNPDistroManager(SmartPtr<ApproximationSpace<TDomain> > approx);
+		virtual ~PNPDistroManager() {};
 
 		// inherited from DualGraphNeighborAdjuster
 		void collect_neighbors(std::vector<elem_type*>& neighborsOut, elem_type* elem);
@@ -71,7 +92,7 @@ class InterfaceDistroAdjuster
 
 
 template <typename TDomain>
-void set_distro_adjuster(SmartPtr<TDomain> dom, SmartPtr<InterfaceDistroAdjuster<TDomain> > adj);
+void set_distro_adjuster(SmartPtr<TDomain> dom, SmartPtr<PNPDistroManager<TDomain> > adj);
 
 
 } // namespace nernst_planck
