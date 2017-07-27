@@ -264,6 +264,33 @@ static void DomainAlgebra(Registry& reg, string grp)
 		//	"Calculates a vector-valued grid function which is the Nernst flux density of the given species in every FV box.");
 	}
 
+	// PNP smoothers
+	{
+		typedef PNPSmoother<TDomain, TAlgebra, ILU> TILU;
+		typedef IPreconditioner<TAlgebra> TBase;
+		string name = string("PNP_ILU").append(suffix);
+		reg.add_class_<TILU, TBase>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
+			.add_method("set_method", &TILU::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+			.add_method("set_parallelization_strategy", &TILU::set_parallelization_strategy, "",
+				"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
+			.add_method("add_charge_surface_pair", &TILU::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "PNP_ILU", tag);
+
+		typedef PNPSmoother<TDomain, TAlgebra, GaussSeidel> TGS;
+		typedef IPreconditioner<TAlgebra> TBase;
+		name = string("PNP_GS").append(suffix);
+		reg.add_class_<TGS, TBase>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
+			.add_method("set_method", &TGS::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+			.add_method("set_parallelization_strategy", &TGS::set_parallelization_strategy, "",
+				"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
+			.add_method("add_charge_surface_pair", &TGS::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "PNP_GS", tag);
+	}
+
 }
 
 /**
@@ -549,6 +576,44 @@ static void Common(Registry& reg, string grp)
 
 }; // end Functionality
 
+
+struct BlockFunctionality
+{
+	template <typename TDomain, typename TAlgebra>
+	static void DomainAlgebra(Registry& reg, string grp)
+	{
+		string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
+		string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
+
+		// PNP smoothers
+		{
+			typedef PNPSmoother<TDomain, TAlgebra, ILU> TILU;
+			typedef IPreconditioner<TAlgebra> TBase;
+			string name = string("PNP_ILU").append(suffix);
+			reg.add_class_<TILU, TBase>(name, grp)
+				.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
+				.add_method("set_method", &TILU::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+				.add_method("add_charge_surface_pair", &TILU::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
+				.add_method("set_parallelization_strategy", &TILU::set_parallelization_strategy, "",
+					"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
+				.set_construct_as_smart_pointer(true);
+			reg.add_class_to_group(name, "PNP_ILU", tag);
+
+			typedef PNPSmoother<TDomain, TAlgebra, GaussSeidel> TGS;
+			typedef IPreconditioner<TAlgebra> TBase;
+			name = string("PNP_GS").append(suffix);
+			reg.add_class_<TGS, TBase>(name, grp)
+				.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
+				.add_method("set_method", &TGS::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+				.add_method("add_charge_surface_pair", &TGS::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
+				.add_method("set_parallelization_strategy", &TGS::set_parallelization_strategy, "",
+					"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
+				.set_construct_as_smart_pointer(true);
+			reg.add_class_to_group(name, "PNP_GS", tag);
+		}
+	}
+};
+
 // end group plugin_nernst_planck
 /// \}
 
@@ -563,13 +628,33 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 {
 	grp.append("/nernst_planck");
 	typedef nernst_planck::Functionality Functionality;
+	typedef nernst_planck::BlockFunctionality BlockFunctionality;
+
+	// most (if not all) algebra-dependent code is only meant for non-blocked algebras
+	typedef boost::mpl::list
+	<
+		#ifdef UG_CPU_1
+		CPUAlgebra,
+		#endif
+		end_boost_list
+	> MyCompileAlgebraList;
+
+	typedef boost::mpl::list
+	<
+		#ifdef UG_CPU_5
+		CPUBlockAlgebra<5>,
+		#endif
+		end_boost_list
+	> MyCompileBlockAlgebraList;
 
 	try{
 		RegisterCommon<Functionality>(*reg,grp);
 		RegisterDimensionDependent<Functionality>(*reg,grp);
 		RegisterDomainDependent<Functionality>(*reg,grp);
 		//RegisterAlgebraDependent<Functionality>(*reg,grp);
-		RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
+		RegisterDomainAlgebraDependent<Functionality, CompileDomainList, MyCompileAlgebraList>(*reg,grp);
+		RegisterDomainAlgebraDependent<BlockFunctionality, CompileDomainList, MyCompileBlockAlgebraList>(*reg,grp);
+		//RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
 	}
 	UG_REGISTRY_CATCH_THROW(grp);
 }
