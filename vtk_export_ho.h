@@ -8,12 +8,39 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__VTK_EXPORT_HO_H_
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__VTK_EXPORT_HO_H_
 
-#include "lib_disc/function_spaces/grid_function_global_user_data.h"			// GlobalGridFunctionNumberData
-#include "lib_disc/function_spaces/dof_position_util.h"							// DoFPosition
-#include "lib_grid/parallelization/parallel_refinement/parallel_refinement.h"	// ParallelGlobalRefiner_MultiGrid
-#include "lib_disc/io/vtkoutput.h"												// VTKOutput
-#include "lib_grid/algorithms/debug_util.h"										// ElementDebugInfo
-#include "lib_grid/file_io/file_io.h"
+#include <cmath>                                                                   // for ceil, log2
+#include <cstddef>                                                                 // for size_t
+#include <limits>                                                                  // for numeric_limits
+#include <ostream>                                                                 // for string, operator<<, basic_ostream, endl
+#include <string>                                                                  // for char_traits, allocator, operator+, basic_string
+#include <vector>                                                                  // for vector
+
+#include "common/assert.h"                                                         // for UG_ASSERT
+#include "common/error.h"                                                          // for UG_CATCH_THROW, UG_COND_THROW
+#include "common/types.h"                                                          // for number
+#include "common/math/math_vector_matrix/math_vector.h"                            // for MathVector
+#include "common/util/smart_pointer.h"                                             // for SmartPtr, ConstSmartPtr, make_sp
+#include "lib_disc/common/function_group.h"                                        // for FunctionGroup
+#include "lib_disc/common/multi_index.h"                                           // for DoFIndex, DoFRef
+#include "lib_disc/dof_manager/dof_distribution.h"                                 // for DoFDistribution, DoFDistribution::traits
+#include "lib_disc/function_spaces/dof_position_util.h"                            // for InnerDoFPosition
+#include "lib_disc/function_spaces/grid_function_global_user_data.h"               // for GlobalGridFunctionNumberData
+#include "lib_disc/io/vtkoutput.h"                                                 // for VTKOutput
+#include "lib_disc/local_finite_element/local_finite_element_id.h"                 // for LFEID
+#include "lib_grid/algorithms/debug_util.h"                                        // for ElementDebugInfo
+#include "lib_grid/algorithms/selection_util.h"                                     // for SelectAssociatedGridObjects
+#include "lib_grid/attachments/attachment_pipe.h"                                  // for AttachmentAccessor
+#include "lib_grid/common_attachments.h"                                           // for AVertex
+#include "lib_grid/grid/grid.h"                                                    // for Grid::VertexAttachmentAccessor::VertexAttachmentAccessor<TAt...
+#include "lib_grid/grid/grid_base_object_traits.h"                                 // for VertexIterator
+#include "lib_grid/grid/grid_base_objects.h"                                       // for CustomVertexGroup, Vertex, Edge (ptr only), Face (ptr only)
+#ifdef UG_PARALLEL
+	#include "lib_grid/parallelization/parallel_refinement/parallel_refinement.h"  // for ParallelGlobalRefiner_MultiGrid
+#endif
+#include "lib_grid/multi_grid.h"                                                   // for MultiGrid
+#include "lib_grid/tools/selector_grid.h"                                          // for Selector
+#include "lib_grid/tools/subset_group.h"                                           // for SubsetGroup
+
 
 namespace ug {
 namespace nernst_planck {

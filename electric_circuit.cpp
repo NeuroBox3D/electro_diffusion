@@ -1,23 +1,23 @@
 // created by Andreas Vogel
 
-#include "common/ug_config.h"
-#include "common/error.h"
-#include <string.h>
-#include <utility>	// for std::pair
-#include <vector>
-#include <queue>    // std::queue
-
-#include "lib_algebra/cpu_algebra_types.h"
-#include "bindings/lua/lua_user_data.h"		// for the current function
-#include "common/util/smart_pointer.h"
-
 #include "electric_circuit.h"
 
-using namespace std;
-using namespace ug::bridge;
+#include <algorithm>                                                             // for sort
+#include <cmath>                                                                 // for abs, fabs
+#include <iostream>                                                              // for operator<<
 
-namespace ug{
-namespace nernst_planck{
+#include "common/error.h"                                                        // for UG_THROW
+#include "common/math/math_vector_matrix/math_vector_functions.h"                // for VecTwoNorm
+#include "lib_algebra/common/operations_mat/operations_mat.h"                    // for MatMult
+#include "lib_algebra/small_algebra/small_matrix/densematrix_inverse.h"          // for Invert
+#include "lib_algebra/small_algebra/small_matrix/densematrix_operations.h"       // for MatMult
+
+
+using namespace std;
+
+namespace ug {
+namespace nernst_planck {
+
 
 void ElectricCircuit::add_capacitor(size_t from, size_t to, number capacitance)
 {

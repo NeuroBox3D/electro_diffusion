@@ -5,15 +5,42 @@
  *      Author: mbreit
  */
 
-#include "nernst_planck_util.h"
+#include <cstddef>                                                  // for size_t, NULL
+#include <fstream>                                                  // for operator<<, basic_ostream, char...
+#include <limits>                                                   // for numeric_limits, numeric_limits<...
+#include <sstream>                                                  // ostringstream
 
-#include "../MembranePotentialMapping/vm2ug_rework.h"	// Mapper
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"	// DimFV1Geometry
-#include "lib_disc/function_spaces/dof_position_util.h"	// DoFPosition
+#include "common/assert.h"                                          // for UG_ASSERT
+#include "common/error.h"                                           // for UG_CATCH_THROW, UG_THROW, UG_CO...
+#include "lib_disc/common/function_group.h"                         // for FunctionGroup
+#include "lib_disc/common/multi_index.h"                            // for DoFIndex, DoFRef
+#include "lib_disc/dof_manager/dof_distribution.h"                  // for DoFDistribution, DoFDistributio...
+#include "lib_disc/domain_traits.h"                                 // for domain_traits
+#include "lib_disc/function_spaces/dof_position_util.h"             // for InnerDoFPosition
+#include "lib_disc/local_finite_element/local_finite_element_id.h"  // for LFEID
+#include "lib_grid/grid/grid_base_object_traits.h"                  // for VertexIterator
+#include "lib_grid/grid/grid_base_objects.h"                        // for Vertex (ptr only), GridBaseObje...
+#ifdef UG_PARALLEL
+	#include "lib_grid/parallelization/distributed_grid.h"          // for DistributedGridManager, Element...
+#endif
+#include "lib_grid/refinement/refiner_interface.h"                  // for IRefiner (ptr only), Refinement...
+#include "lib_grid/multi_grid.h"                                    // for MultiGrid
+#include "lib_grid/tools/grid_level.h"                              // for GridLevel, GridLevel::::TOP
+#include "lib_grid/tools/subset_group.h"                            // for SubsetGroup
+#include "lib_grid/tools/subset_handler_multi_grid.h"               // for MultiGridSubsetHandler
+#include "lib_grid/tools/surface_view.h"                            // for SurfaceView::ConstSurfaceViewEl...
+#ifdef UG_PARALLEL
+	#include "pcl/pcl_base.h"                                       // for NumProcs
+#endif
 
-#include <limits>
+#include "../MembranePotentialMapping/vm2ug_rework.h"               // for Mapper
+
 
 namespace ug{
+
+// forward declaration
+template <typename TDomain> class ApproximationSpace;
+
 namespace nernst_planck{
 
 

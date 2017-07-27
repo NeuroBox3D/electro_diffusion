@@ -5,13 +5,32 @@
  *      Author: mbreit
  */
 
-
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"    // FV1Geometry
-#include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"   // HFV1Geometry
-
 #include "pnp_upwind.h"
 
+#include <cmath>                                                   // for exp
+#include <cstddef>                                                 // for size_t, NULL
+#include <vector>                                                  // for vector, allocator
+
+#include "common/assert.h"                                         // for UG_ASSERT
+#include "common/error.h"                                          // for UG_COND_THROW
+#include "common/math/math_vector_matrix/math_vector_functions.h"  // for VecDot, VecNormalize, VecScale
+#include "common/util/metaprogramming_util.h"                      // for Int2Type
+#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"              // for DimFV1Geometry, FV1Geometry
+#include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"             // for HFV1Geometry
+
+
 namespace ug {
+
+// forward declarations
+class RegularEdge;
+class Triangle;
+class Quadrilateral;
+class Tetrahedron;
+class Pyramid;
+class Prism;
+class Octahedron;
+class Hexahedron;
+
 namespace nernst_planck {
 
 
@@ -100,7 +119,7 @@ if (onlyConsiderMe == (void*) this)
 			conv_shape(ip, sh) = dirVelProdExp[sh] / dirVelProdExpSum * flux;
 
 
-		// compute derivatives if needed
+		// compute derivatives (w.r.t. vel) if needed
 		if (computeDeriv)
 		{
 			for (size_t sh = 0; sh < numSH; ++sh)

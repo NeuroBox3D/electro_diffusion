@@ -8,16 +8,36 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__FLUX_EXPORTER_H
 #define UG__PLUGINS__NERNST_PLANCK__FLUX_EXPORTER_H
 
+#include <cmath>                                                           // for fabs
+#include <cstddef>                                                         // for size_t
+#include <algorithm>                                                       // for max
+#include <map>                                                             // for operator!=
+#include <set>                                                             // for set
+#include <utility>                                                         // for pair
+#include <vector>                                                          // for vector
 
-#include "lib_disc/spatial_disc/constraints/constraint_interface.h"	// IConstraint
-#include "lib_disc/io/vtkoutput.h"									// VTKOutput
-#include "lib_disc/spatial_disc/disc_util/conv_shape.h"				// Upwinding
+#include "common/types.h"                                                  // for number
+#include "common/math/math_vector_matrix/math_vector.h"                    // for MathVector
+#include "common/util/smart_pointer.h"                                     // for SmartPtr, Cons...
+#include "lib_disc/common/function_group.h"                                // for FunctionGroup
+#include "lib_disc/common/local_algebra.h"                                 // for LocalVector
+#include "lib_disc/local_finite_element/local_finite_element_id.h"         // for LFEID
+#include "lib_grid/grid/grid_base_objects.h"                               // for GridObject (pt...
+#include "lib_grid/grid_objects/grid_dim_traits.h"                         // for grid_dim_traits
+#include "lib_grid/tools/subset_group.h"                                   // for SubsetGroup
+#include "pcl/pcl_base.h"                                                  // for NumProcs
 
-#include <vector>
-#include <string>
 
 namespace ug {
+
+// forward declarations
+class MultiGrid;
+template <int TDim> class VTKOutput;
+template <int dim> class IConvectionShapes;
+template <typename TAlgebra> class IConstraint;
+
 namespace nernst_planck {
+
 
 template <typename TGridFunction>
 class FluxExporter

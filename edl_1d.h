@@ -8,12 +8,15 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__EDL_1D_H
 #define UG__PLUGINS__NERNST_PLANCK__EDL_1D_H
 
-// include some ug framework dependencies
-#include "lib_algebra/lib_algebra.h"		// vector and matrix
+#include <cstddef>                                                    // for size_t
+#include <string>                                                     // for string
+#include <vector>                                                     // for vector
 
-// std includes
-#include <string>
-#include <vector>
+#include "common/types.h"                                             // for number
+#include "lib_algebra/small_algebra/small_matrix/densematrix.h"       // for DenseMatrix
+#include "lib_algebra/small_algebra/small_matrix/densevector.h"       // for DenseVector
+#include "lib_algebra/small_algebra/storage/variable_array.h"         // for VariableArray2, Var...
+
 
 namespace ug {
 namespace nernst_planck {

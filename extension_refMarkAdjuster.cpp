@@ -6,8 +6,18 @@
  */
 
 #include "extension_refMarkAdjuster.h"
-#include "lib_grid/algorithms/element_side_util.h"	// GetOpposingSide
-#include "lib_grid/common_attachments.h"			// aPosition
+
+#include <cmath>                                                   // for fabs
+#include <cstddef>                                                 // for size_t
+
+#include "common/error.h"                                          // for UG_COND_...
+#include "common/math/math_vector_matrix/math_vector_functions.h"  // for VecNorma...
+#include "lib_disc/domain.h"                                       // for Domain1d, Domain2d, Dom...
+#include "lib_grid/grid/grid.h"                                    // for Grid::associated_elements ...
+#include "lib_grid/grid/grid_base_objects.h"                       // for Edge
+#include "lib_grid/refinement/hanging_node_refiner_multi_grid.h"   // for HangingN...
+#include "lib_grid/refinement/refiner_interface.h"                 // for IRefiner
+#include "lib_grid/multi_grid.h"                                   // for MultiGrid
 
 
 namespace ug {

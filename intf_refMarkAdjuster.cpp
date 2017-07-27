@@ -6,12 +6,20 @@
  */
 
 #include "intf_refMarkAdjuster.h"
-#include "lib_grid/algorithms/element_side_util.h"	// GetOpposingSide
+
+#include <cstddef>                                               // for size_t
+
+#include "common/error.h"                                         // for UG_COND_THROW
+#include "lib_grid/algorithms/element_side_util.h"                // for GetOpposingSide
+#include "lib_grid/grid/grid.h"                                   // for Grid, Grid::traits, Grid::traits<...
+#include "lib_grid/grid/grid_base_objects.h"                      // for Edge, Vertex, Face, Volume (ptr o...
+#include "lib_grid/refinement/hanging_node_refiner_multi_grid.h"  // for HangingNodeRefiner_MultiGrid
+#include "lib_grid/refinement/refiner_interface.h"                // for IRefiner, RefinementMark::RM_ANIS...
+#include "lib_grid/multi_grid.h"                                  // for MultiGrid
 
 
 namespace ug {
 namespace nernst_planck {
-
 
 
 void InterfaceRefMarkAdjuster::ref_marks_changed

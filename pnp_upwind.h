@@ -8,11 +8,17 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__PNP_UPWIND_H
 #define UG__PLUGINS__NERNST_PLANCK__PNP_UPWIND_H
 
-
-#include "lib_disc/spatial_disc/disc_util/conv_shape_interface.h"
+#include "common/types.h"                                          // for number
+#include "common/math/math_vector_matrix/math_matrix.h"            // for MathMatrix
+#include "common/math/math_vector_matrix/math_vector.h"            // for MathVector
+#include "lib_disc/spatial_disc/disc_util/conv_shape_interface.h"  // for IConvectionShapes
 
 
 namespace ug {
+
+// forward declaration
+template <int N> struct Int2Type;
+
 namespace nernst_planck {
 
 

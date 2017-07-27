@@ -7,9 +7,16 @@
 
 #include "edl_1d.h"
 
-// std includes
-#include <iostream>
-#include <sstream>
+#include <cmath>                                                                 // for floor
+#include <fstream>                                                               // for operator<<
+#include <iostream>                                                              // for cout
+
+#include "common/error.h"                                                        // for UG_THROW
+#include "common/math/math_vector_matrix/math_vector_functions.h"                // for VecTwoNorm
+#include "lib_algebra/common/operations_mat/operations_mat.h"                    // for MatMultAdd
+#include "lib_algebra/small_algebra/small_matrix/densematrix_inverse.h"          // for Invert
+#include "lib_algebra/small_algebra/small_matrix/densematrix_operations.h"       // for MatMultAdd
+
 
 namespace ug {
 namespace nernst_planck {

@@ -8,12 +8,20 @@
 #ifndef __UG__PLUGINS__NERNST_PLANCK__ORDER_H__
 #define __UG__PLUGINS__NERNST_PLANCK__ORDER_H__
 
-#include <vector>
+#include <cstddef>                                     // for size_t
+#include <vector>                                      // for vector
 
-#include "lib_disc/function_spaces/approximation_space.h"
+#include "common/util/smart_pointer.h"                 // for SmartPtr, ConstSmartPtr
+#include "lib_grid/tools/subset_group.h"               // for SubsetGroup
+#include "lib_grid/tools/subset_handler_multi_grid.h"  // for MGSubsetHandler
 
 
 namespace ug {
+
+// forward declarations
+class DoFDistribution;
+template <typename TDomain> class ApproximationSpace;
+
 namespace nernst_planck {
 
 

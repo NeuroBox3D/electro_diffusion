@@ -5,34 +5,39 @@
  *      Author: mbreit
  */
 
-#include "bridge/util.h"
-#include "bridge/util_domain_algebra_dependent.h"
+#include "bridge/util.h"                                    // for RegisterCommon, RegisterDimensionDependent
+#include "bridge/util_domain_algebra_dependent.h"           // for RegisterDomainAlgebraDependent
+#include "lib_algebra/operator/interface/preconditioner.h"  // for IPreconditioner
+#include "lib_disc/function_spaces/grid_function.h"         // for GridFunction
 
-#include "nernst_planck_util.h"
-#include "copy_neighbor_value_constraint.h"
-#include "electric_circuit.h"
-#include "edl_1d.h"
-#include "interface1d_fv.h"
-#include "pnp1d_fv1.h"
-#include "pnp1d_fv.h"
-#include "vtk_export_ho.h"
-#include "order.h"
-#include "charge_marking.h"
-#include "intf_refMarkAdjuster.h"
-#include "extension_refMarkAdjuster.h"
-#include "flux_exporter.h"
-#include "pnp_upwind.h"
-#include "morpho_gen.h"
-
+#include "charge_marking.h"                                 // for ChargeMarking
+#include "copy_neighbor_value_constraint.h"                 // for Domain1dSolutionAdjuster
+#include "edl_1d.h"                                         // for EDLSimulation
+#include "electric_circuit.h"                               // for ElectricCircuit
+#include "extension_refMarkAdjuster.h"                      // for ExtensionRefMarkAdjuster
+#include "flux_exporter.h"                                  // for FluxExporter
+#include "interface1d_fv.h"                                 // for IInterface1D, Interface1D, AdditiveInterface1D
 #ifdef UG_PARALLEL
-	#include "intf_distro_adjuster.h"
+	#include "intf_distro_adjuster.h"                       // for PNPDistroManager, set_distro_adjuster
 #endif
+#include "intf_refMarkAdjuster.h"                           // for InterfaceRefMarkAdjuster
+#include "morpho_gen.h"                                     // for MorphoGen
+#include "nernst_planck_util.h"                             // for adjust_geom_after_refinement, exportSolution
+#include "order.h"                                          // for reorder_dof_distros_lex, reorder_dofs
+#include "pnp1d_fv.h"                                       // for PNP1D_FV
+#include "pnp1d_fv1.h"                                      // for PNP1D_FV1
+#include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
+#include "pnp_upwind.h"                                     // for PNPUpwind
+#include "vtk_export_ho.h"                                  // for vtk_export_ho
+
 
 using namespace std;
 using namespace ug::bridge;
 
-namespace ug{
-namespace nernst_planck{
+
+namespace ug {
+namespace nernst_planck {
+
 
 /**
  *  \defgroup plugin_nernst_planck Plugin nernst_planck

@@ -8,19 +8,35 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
 
+#include <cstddef>                                                   // for size_t, NULL
+#include <cmath>                                                     // for fabs
+#include <limits>                                                    // for numeric_limits
+#include <map>                                                       // for map
+#include <vector>                                                    // for vector
 
-#include <map>
-#include <limits>
-#include <vector>
-
-#include "lib_disc/spatial_disc/constraints/constraint_interface.h"	// IDomainConstraint
-//#include "lib_disc/spatial_disc/local_to_global/local_to_global_mapper.h" // ILocalToGlobalMapper
-#include "lib_disc/assemble_interface.h"	// IAssemble
-#include "lib_disc/dof_manager/orientation.h"	// MapLagrangeMultiIndexTriangle etc.
+#include "common/error.h"                                            // for UG_THROW, UG_COND_THROW
+#include "common/types.h"                                            // for number
+#include "common/math/math_vector_matrix/math_vector.h"              // for MathVector
+#include "common/util/smart_pointer.h"                               // for ConstSmartPtr, SPNULL, SmartPtr
+#include "lib_disc/spatial_disc/constraints/constraint_interface.h"  // for IDomainConstraint
 
 
-namespace ug{
-namespace nernst_planck{
+namespace ug {
+
+// forward declarations
+class GridObject;
+class Vertex;
+class Edge;
+class Face;
+class EdgeDescriptor;
+class FaceDescriptor;
+class ISubsetHandler;
+class DoFDistribution;
+template <typename TDomain> class ApproximationSpace;
+template <typename TVector> class VectorTimeSeries;
+
+
+namespace nernst_planck {
 
 /// Algebra- and domain-less interface for algebra- and domain-dependent interface template classes
 class IInterface1D
@@ -33,6 +49,8 @@ class IInterface1D
 		virtual int intf_node_1d_subset_index() = 0;
 };
 
+
+// TODO: Revise for blocked matrices.
 
 
 /// Interface class for coupling high-dimensional (2D/3D) discretizations with 1D simplifications.

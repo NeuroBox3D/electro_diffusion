@@ -7,8 +7,24 @@
 
 #include "pnp1d_fv.h"
 
-namespace ug{
-namespace nernst_planck{
+#include "common/math/math_vector_matrix/math_matrix_vector_functions.h"  // for MatVecMult
+#include "common/math/math_vector_matrix/math_vector_functions.h"         // for VecSet
+#include "common/math/misc/math_constants.h"                              // for PI
+#include "lib_disc/domain.h"                                              // for Domain1d, Domain2d, Domain3d
+#include "lib_disc/spatial_disc/disc_util/fvho_geom.h"                    // for DimFVGeometry
+#include "lib_disc/spatial_disc/disc_util/geom_provider.h"                // for GeomProvider
+#include "lib_grid/grid/grid_base_object_traits.h"                        // for geometry_traits
+#include "lib_grid/tools/subset_group.h"                                  // for SubsetGroup
+
+
+namespace ug {
+
+// forward declarations
+class RegularEdge;
+template <typename TDomain> class ApproximationSpace;
+
+namespace nernst_planck {
+
 
 //////////////////////////
 //   Constructors   	//

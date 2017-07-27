@@ -3,19 +3,19 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__ELECTRIC_CIRCUIT_H
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__ELECTRIC_CIRCUIT_H
 
-#include "common/ug_config.h"
-#include "common/error.h"
-#include <string.h>
-#include <utility>	// for std::pair
-#include <vector>
-#include <queue>    // std::queue
+#include <cstddef>                                               // for size_t
+#include <string>                                                // for string
+#include <utility>                                               // for pair
+#include <vector>                                                // for vector, allocator
 
-#include "lib_algebra/cpu_algebra_types.h"
-#include "bindings/lua/lua_user_data.h"		// for the current function
-#include "common/util/smart_pointer.h"
+#include "common/types.h"                                        // for number
+#include "lib_algebra/small_algebra/small_matrix/densematrix.h"  // for DenseMatrix
+#include "lib_algebra/small_algebra/small_matrix/densevector.h"  // for DenseVector
+#include "lib_algebra/small_algebra/storage/variable_array.h"    // for VariableArray2
+
 
 using namespace std;
-using namespace ug::bridge;
+//using namespace ug::bridge;
 
 namespace ug{
 namespace nernst_planck{

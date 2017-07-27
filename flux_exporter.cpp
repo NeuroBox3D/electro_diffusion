@@ -6,24 +6,51 @@
  */
 
 #include "flux_exporter.h"
-#include "vtk_export_ho.h"
 
-#include "lib_disc/function_spaces/grid_function.h"				// GridFunction
-#include "lib_disc/spatial_disc/disc_util/geom_provider.h"		// GeomProvider
-#include "lib_disc/spatial_disc/disc_util/fvho_geom.h"			// FVGeom, DimFVGeom
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"			// FV1Geometry
-#include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"			// HFV1Geometry
-#include "lib_disc/common/groups_util.h"						// CreateFunctionIndexMapping
-#include "lib_grid/grid_objects/grid_dim_traits.h"				// grid_dim_traits
-#include "lib_disc/function_spaces/dof_position_util.h"			// DoFPosition
-#include "lib_disc/function_spaces/grid_function_user_data.h"	// GridFunctionVectorData
-#include "lib_grid/grid_objects/grid_objects.h"					// geometry_traits<TElem>::REFERENCE_OBJECT_ID
-#include "common/util/string_util.h"							// AppendCounterToString
+#include <boost/mpl/for_each.hpp>                                    // for for_each
+#include <limits>                                                    // for numeric_...
+#include <fstream>                                                   // for ofstream
 
-#include <set>
-#include <limits>
+#include "common/error.h"                                            // for UG_COND_...
+#include "common/math/math_vector_matrix/math_matrix.h"              // for MathMatrix
+#include "common/math/math_vector_matrix/math_vector_functions.h"    // for VecScale...
+#include "lib_algebra/cpu_algebra_types.h"                           // for CPUAlgebra
+#include "lib_algebra/parallelization/parallel_storage_type.h"       // for Parallel...
+#include "lib_disc/common/groups_util.h"                             // for CreateFunctionIndexMapping...
+#include "lib_disc/common/multi_index.h"                             // for DoFIndex
+#include "lib_disc/dof_manager/dof_distribution.h"                   // for DoFDistr...
+#include "lib_disc/domain.h"                                         // for Domain1d, Doma...
+#include "lib_disc/domain_traits.h"                                  // for domain_traits
+#include "lib_disc/domain_util.h"                                    // for FillCornerCoordinates
+#include "lib_disc/function_spaces/approximation_space.h"            // for ApproximationSpace
+#include "lib_disc/function_spaces/dof_position_util.h"              // for DoFPosition
+#include "lib_disc/function_spaces/grid_function.h"                  // for GridFunction
+#include "lib_disc/spatial_disc/ass_tuner.h"                         // for ConstraintType...
+#include "lib_disc/spatial_disc/constraints/constraint_interface.h"  // for IConstraint
+#include "lib_disc/spatial_disc/disc_util/conv_shape.h"              // for Convecti...
+#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"                // for FV1Geometry
+#include "lib_disc/spatial_disc/disc_util/fvho_geom.h"               // for DimFVGeometry
+#include "lib_disc/spatial_disc/disc_util/geom_provider.h"           // for GeomProvider
+#include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"               // for HFV1Geometry
+#include "lib_grid/algorithms/subset_dim_util.h"                     // for DimensionOfSubset
+#include "lib_grid/grid/grid_base_object_traits.h"                   // for geometry_traits
+#include "lib_grid/multi_grid.h"                                     // for MultiGrid
+#include "pcl/pcl_base.h"                                            // for NumProcs
+#ifdef UG_PARALLEL
+	#include "pcl/pcl_process_communicator.h"                        // for ProcessCommunicator
+#endif
+
+#include "vtk_export_ho.h"                                           // for vtk_export_ho
+
 
 namespace ug {
+
+// forward declarations
+class Octahedron;
+class Pyramid;
+template <int TDim> class VTKOutput;
+template <int dim> class IConvectionShapes;
+
 namespace nernst_planck {
 
 

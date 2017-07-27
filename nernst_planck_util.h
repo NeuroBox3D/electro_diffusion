@@ -8,17 +8,18 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H
 
+#include <vector>                       // for vector
 
-#include "common/common.h"
-#include "lib_disc/function_spaces/approximation_space.h"
-#include "lib_disc/function_spaces/grid_function.h"
-#include "lib_grid/refinement/refiner_interface.h"			// IRefiner
-
-#include <iostream>
-#include <fstream>
+#include "common/types.h"               // for number
+#include "common/util/smart_pointer.h"  // for SmartPtr, ConstSmartPtr
 
 
 namespace ug {
+
+// forward declarations
+class IRefiner;
+template <typename TDomain> class ApproximationSpace;
+
 namespace nernst_planck {
 
 

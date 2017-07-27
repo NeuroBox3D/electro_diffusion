@@ -6,12 +6,19 @@
  */
 
 #include "charge_marking.h"
-#include "intf_refMarkAdjuster.h"
 
-#include "lib_disc/domain.h"
-#include "lib_grid/refinement/hanging_node_refiner_base.h"
+#include "lib_disc/dof_manager/dof_distribution.h"          // for DoFDistribution, DoFDistribut...
+#include "lib_disc/domain.h"                                // for Domain1d, Domain2d, Domain3d
+#include "lib_disc/domain_traits.h"                         // for domain_traits
+#include "lib_disc/function_spaces/approximation_space.h"   // for ApproximationSpace
+#include "lib_disc/function_spaces/error_indicator_util.h"  // for ComputeMinMaxTotal
+#include "lib_grid/grid/grid.h"                             // for Grid::traits, Grid::associated_elements
+#include "lib_grid/grid/grid_base_objects.h"                // for Vertex
+#include "lib_grid/multi_grid.h"                            // for MultiGrid
+#include "lib_grid/refinement/refiner_interface.h"          // for IRefiner, RefinementMark::RM_...
+#include "lib_grid/tools/grid_level.h"                      // for GridLevel
+#include "lib_grid/tools/subset_handler_interface.h"        // for ISubsetHandler
 
-#include <algorithm>
 
 namespace ug {
 namespace nernst_planck {

@@ -6,36 +6,61 @@
  */
 
 #include "morpho_gen.h"
-#include "lib_grid/grid/geometry.h" // MakeGeometry3d
-#include "lib_grid/file_io/file_io_ugx.h"  // GridWriterUGX
-#include "lib_grid/algorithms/subset_util.h"  // AssignSubsetColors
-#include "common/util/file_util.h"     // FindDirInStandardPaths
-#include "common/util/string_util.h"   // GetFilenameExtension etc.
-#include "lib_grid/algorithms/remeshing/delaunay_triangulation.h" // QualityGridGeneration
-#include "lib_grid/algorithms/extrusion/extrusion.h" // Extrude
-#include "lib_grid/algorithms/smoothing/manifold_smoothing.h"	// Laplacian smooth
-#include "lib_grid/algorithms/element_side_util.h" // vertexGroupsMatch
-#include "lib_grid/algorithms/debug_util.h"	// ElemDebugInfo
-#include "lib_algebra/small_algebra/small_algebra.h" // Invert
-#include "lib_grid/refinement/projectors/cylinder_projector.h"	// CylinderProjector
-#include "lib_grid/refinement/projectors/sphere_projector.h"	// SphereProjector
-#include "lib_grid/refinement/regular_refinement.h"	// Refine
-#include "lib_grid/algorithms/geom_obj_util/volume_util.h"	// FixOrientation
-#include "lib_grid/algorithms/orientation_util.h"	// FixOrientation
-#include "lib_grid/algorithms/geom_obj_util/face_util.h"	// Triangulate, CalculateFaceNormals, FixFaceOrientation
-#include "lib_grid/algorithms/remove_duplicates_util.h"	// RemoveDuplicates
-#include "lib_grid/algorithms/grid_generation/triangle_fill_sweep_line.h"	// TriangleFillSweepLine
-#include "lib_grid/algorithms/selection_util.h"  // SelectLinkedFlatFaces
-#include "lib_grid/refinement/global_multi_grid_refiner.h"	// GlobalMultiGridRefiner
-#include "lib_disc/domain_util.h"	// LoadDomain
-#include "lib_grid/file_io/file_io.h"  // SaveGridHierarchyTransformed
-#include "lib_grid/algorithms/grid_generation/icosahedron.h"  // icosahedron generation
 
-#include <cstdlib>  // rand
-#include <limits>	// numeric_limits
+#include <algorithm>                                                                    // for max, min, sort
+#include <cmath>                                                                        // for sqrt, fabs
+#include <cstdlib>                                                                      // for rand, RAND_MAX
+#include <ctime>                                                                        // for time
+#include <limits>                                                                       // for numeric_limits
+#include <queue>                                                                        // for queue
+#include <sstream>                                                                      // for stringstream
+
+#include "common/error.h"                                                               // for UG_COND_THROW
+#include "common/log.h"                                                                 // for UG_LOGN
+#include "common/math/math_vector_matrix/math_matrix_vector_functions.h"                // for MatVecMult
+#include "common/math/math_vector_matrix/math_vector_functions.h"                       // for VecSubtract
+#include "common/math/misc/math_constants.h"                                            // for PI
+#include "common/util/file_util.h"                                                      // for FindDirInSt...
+#include "common/util/smart_pointer.h"                                                  // for SmartPtr
+#include "common/util/string_util.h"                                                    // for PathFromFil...
+#include "lib_algebra/common/operations_vec.h"                                          // for VecProd
+#include "lib_algebra/small_algebra/small_matrix/densematrix.h"                         // for DenseMatrix
+#include "lib_algebra/small_algebra/small_matrix/densematrix_inverse.h"                 // for Invert
+#include "lib_algebra/small_algebra/storage/variable_array.h"                           // for VariableArray1
+#include "lib_disc/domain.h"                                                            // for Domain3d
+#include "lib_disc/domain_util.h"                                                       // for LoadDomain
+#include "lib_grid/algorithms/element_side_util.h"                                      // for GetOpposing...
+#include "lib_grid/algorithms/extrusion/extrude.h"                                      // for Extrude
+#include "lib_grid/algorithms/orientation_util.h"                                       // for FixFaceOrie...
+#include "lib_grid/algorithms/selection_util.h"                                         // for SelectAssoc...
+#include "lib_grid/algorithms/geom_obj_util/edge_util.h"                                // for EdgeLength
+#include "lib_grid/algorithms/geom_obj_util/face_util.h"                                // for CalculateFa...
+#include "lib_grid/algorithms/geom_obj_util/misc_util.h"                                // for CalculateCe...
+#include "lib_grid/algorithms/geom_obj_util/vertex_util.h"                              // for MergeVertices
+#include "lib_grid/algorithms/geom_obj_util/volume_util.h"                              // for CalculateCe...
+#include "lib_grid/algorithms/grid_generation/icosahedron.h"                            // for GenerateIco...
+#include "lib_grid/algorithms/grid_generation/triangle_fill_sweep_line.h"               // for TriangleFil...
+#include "lib_grid/algorithms/remeshing/delaunay_triangulation.h"                       // for QualityGrid...
+#include "lib_grid/algorithms/selection_util.h"                                         // for SelectInner...
+#include "lib_grid/algorithms/subset_util.h"                                            // for AssignSubse...
+#include "lib_grid/attachments/attachment_pipe.h"                                       // for AttachmentA...
+#include "lib_grid/callbacks/selection_callbacks.h"                                     // for IsSelected
+#include "lib_grid/file_io/file_io.h"                                                   // for SaveGridHie...
+#include "lib_grid/file_io/file_io_ugx.h"                                               // for GridWriterUGX
+#include "lib_grid/grid/grid_base_object_traits.h"                                      // for VertexIterator
+#include "lib_grid/grid/grid_base_objects.h"                                            // for Face, Edge
+#include "lib_grid/grid_objects/grid_objects_0d.h"                                      // for RegularVertex
+#include "lib_grid/grid_objects/grid_objects_1d.h"                                      // for RegularEdge
+#include "lib_grid/grid_objects/grid_objects_2d.h"                                      // for Triangle
+#include "lib_grid/grid_objects/grid_objects_3d.h"                                      // for Tetrahedron
+#include "lib_grid/refinement/global_multi_grid_refiner.h"                              // for GlobalMulti...
+#include "lib_grid/refinement/projectors/cylinder_projector.h"                          // for CylinderPro...
+#include "lib_grid/refinement/projectors/sphere_projector.h"                            // for SphereProje...
+#include "lib_grid/tools/selector_grid.h"                                               // for Selector
+#include "lib_grid/tools/selector_grid_elem.h"                                          // for FaceSelector
+#include "lib_grid/tools/subset_handler_grid.h"                                         // for SubsetHandler
 
 #include "tetgen_config.h"
-
 #ifdef TETGEN_15_ENABLED
 	#include "tetgen.h"
 #endif

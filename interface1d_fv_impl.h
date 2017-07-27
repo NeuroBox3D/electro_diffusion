@@ -5,16 +5,40 @@
  *      Author: mbreit
  */
 
-#include "interface1d_fv.h"
+#include <utility>                                                               // for make_pair, pair
 
-#include "lib_grid/tools/surface_view.h"
-#include "lib_grid/algorithms/element_side_util.h"	// GetOpposingSide
+#include "common/assert.h"                                                       // for UG_ASSERT
+#include "common/math/math_vector_matrix/math_vector_functions.h"                // for VecNormalize, VecS...
+#include "common/util/string_util.h"                                             // for TokenizeString
 #ifdef UG_PARALLEL
-	#include "lib_grid/parallelization/distributed_grid.h"
+	#include "lib_algebra/parallelization/parallel_storage_type.h"               // for ParallelStorageTyp...
+#endif
+#include "lib_disc/common/function_group.h"                                      // for FunctionGroup
+#include "lib_disc/common/multi_index.h"                                         // for DoFIndex
+#include "lib_disc/dof_manager/dof_distribution.h"                               // for DoFDistribution
+#include "lib_disc/dof_manager/function_pattern.h"                               // for FunctionPattern
+#include "lib_disc/dof_manager/orientation.h"                                    // for ComputeOrientation...
+#include "lib_disc/local_finite_element/local_finite_element_id.h"               // for LFEID, LFEID::Spac...
+#include "lib_disc/spatial_disc/ass_tuner.h"                                     // for ConstraintType::CT...
+#include "lib_grid/algorithms/element_side_util.h"                               // for GetOpposingSide
+#include "lib_grid/algorithms/geom_obj_util/vertex_util.h"                       // for GetVertexIndex
+#include "lib_grid/grid/grid.h"                                                  // for Grid::associated_e...
+#include "lib_grid/grid/grid_base_objects.h"                                     // for Face, GridObject
+#include "lib_grid/multi_grid.h"                                                 // for MultiGrid
+#include "lib_grid/tools/subset_handler_interface.h"                             // for ISubsetHandler::ge...
+#include "lib_grid/tools/surface_view.h"                                         // for SurfaceView::Const...
+#ifdef UG_PARALLEL
+	#include "pcl/pcl_base.h"                                                    // for NumProcs
 #endif
 
-namespace ug{
-namespace nernst_planck{
+namespace ug {
+
+// forward declarations
+template <typename TDomain> class ApproximationSpace;
+template <typename TVector> class VectorTimeSeries;
+
+
+namespace nernst_planck {
 
 
 #if 0

@@ -8,16 +8,31 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__MORPHO_GEN_H
 #define UG__PLUGINS__NERNST_PLANCK__MORPHO_GEN_H
 
-#include "lib_grid/grid/grid.h"
-#include "lib_grid/common_attachments.h"
-#include "lib_grid/selector.h"
-#include "lib_grid/subset_handler.h"
-#include "lib_grid/refinement/projectors/projection_handler.h"
-#include "lib_algebra/small_algebra/small_matrix/densevector.h"
-#include "lib_algebra/small_algebra/small_matrix/densematrix.h"
+#include <cstddef>                                               // for size_t
+#include <string>                                                // for string
+#include <vector>                                                // for vector
+
+#include "common/types.h"                                        // for number
+#include "common/math/ugmath_types.h"                            // for vector3
+#include "lib_algebra/small_algebra/small_matrix/densevector.h"  // for DenseVector
+#include "lib_algebra/small_algebra/storage/variable_array.h"    // for Variable...
+#include "lib_grid/grid/grid.h"                                  // for Grid
+#include "lib_grid/attachments/attachment_pipe.hpp"              // for Attachme...
+#include "lib_grid/common_attachments.h"                         // for APosition
+#include "lib_grid/refinement/projectors/projection_handler.h"   // for ProjectionHandler
+#include "lib_grid/tools/selector_grid.h"                        // for Selector
+#include "lib_grid/tools/subset_handler_grid.h"                  // for SubsetHandler
 
 
 namespace ug {
+
+// forward declarations
+class Vertex;
+class Edge;
+class Face;
+template <typename TStorage> class DenseMatrix;
+
+
 namespace nernst_planck {
 
 

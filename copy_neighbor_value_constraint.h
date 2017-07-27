@@ -8,20 +8,19 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__COPY_NEIGHBOR_VALUE_CONSTRAINT_H
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__COPY_NEIGHBOR_VALUE_CONSTRAINT_H
 
-
-#include <map>
-#include <limits>	// for numeric_limits<>::max()
-
-#include "common/common.h"
-#include "common/math/ugmath.h"
-#include "lib_algebra/operator/interface/matrix_operator.h"
-#include "lib_disc/spatial_disc/constraints/constraint_interface.h"
-#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
-#include "lib_disc/spatial_disc/disc_util/geom_provider.h"
+#include <string>                                        // for string
+#include <vector>                                        // for vector, allocator
+#include "common/types.h"                                // for number
+#include "common/math/math_vector_matrix/math_vector.h"  // for MathVector
+#include "common/util/smart_pointer.h"                   // for SmartPtr
 
 
-namespace ug{
-namespace nernst_planck{
+namespace ug {
+
+// forward declarations
+template <typename TDomain, typename TAlgebra> class GridFunction;
+
+namespace nernst_planck {
 
 #if 0
 
@@ -180,7 +179,7 @@ class Domain1dSolutionAdjuster
 		void add_constrained_subset(const char* ss) {m_vConstrdNames.push_back(ss);}
 		void add_constrainer_subset(const char* ss) {m_vConstrgNames.push_back(ss);}
 
-		void set_sorting_direction(std::vector<number> vDir);
+		void set_sorting_direction(const std::vector<number>& vDir);
 
 		void adjust_solution(SmartPtr<GridFunction<TDomain, TAlgebra> > u);
 

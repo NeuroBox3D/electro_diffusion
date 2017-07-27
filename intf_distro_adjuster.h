@@ -8,28 +8,24 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__INTF_DISTRO_ADJUSTER_H_
 #define UG__PLUGINS__NERNST_PLANCK__INTF_DISTRO_ADJUSTER_H_
 
+#include <vector>                                              // for vector, allocator
 
-#include "lib_grid/parallelization/distro_adjuster.h"
-#include "lib_grid/tools/subset_handler_interface.h"
-#include "lib_grid/lib_grid_messages.h"
-#include "common/util/smart_pointer.h"
+#include "common/util/smart_pointer.h"                         // for SmartPtr, ConstSmartPtr
+#include "lib_grid/algorithms/graph/dual_graph.h"              // for DualGraphNeighborCollector
+#include "lib_grid/grid_objects/grid_dim_traits.h"             // for grid_dim_traits
+#include "lib_grid/parallelization/distro_adjuster.h"          // for DistroAdjuster
+#include "lib_grid/tools/subset_handler_multi_grid.h"          // for MGSubsetHandler
 
-#include "lib_grid/algorithms/graph/dual_graph.h"	// DualGraphNeighborCollector
-#include "lib_grid/grid_objects/grid_dim_traits.h"
+#include "../Parmetis/src/partitioner_parmetis.h"              // for SideSubsetProtector
 
-#include "interface1d_fv.h"
-
-#include <vector>
+#include "interface1d_fv.h"                                    // for IInterface1D
 
 
 namespace ug {
-namespace nernst_planck {
 
-// This class' collect_neighbor method can not be used in Parmetis partitioninf
-// for grids without full-dim (w.r.t. TDomain::dim) elements a.t.m.
-// To treat that case, you will need to declare this class not only template
-// of TDomain, but also of refDim which must then be used in the public derivation
-// statement from DualGraphNeighborCollector below.
+// forward declarations
+class MGSelector;
+template <typename TDomain> class ApproximationSpace;
 
 namespace nernst_planck {
 /**

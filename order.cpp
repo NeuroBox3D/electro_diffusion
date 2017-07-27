@@ -7,14 +7,23 @@
 
 #include "order.h"
 
-#include "common/error.h"
-#include "lib_disc/domain.h"
+#include <cstdlib>                                             // for abs
+#include <algorithm>                                           // for min, stable_sort
+#include <map>                                                 // for map
+#include <set>                                                 // for set
+
+#include "common/assert.h"                                     // for UG_ASSERT
+#include "common/error.h"                                      // for UG_COND_THROW, UG_CATCH_THROW, UG_THROW
+#include "common/types.h"                                      // for number
+#include "common/util/string_util.h"                           // for TokenizeString
+#include "lib_disc/dof_manager/dof_distribution.h"             // for DoFDistribution, DoFDistribution::tr...
+#include "lib_disc/domain.h"                                   // for Domain1d, Domain2d, Domain3d
+#include "lib_disc/function_spaces/approximation_space.h"      // for ApproximationSpace
+#include "lib_grid/grid/grid_base_objects.h"                   // for GridBaseObjectId::EDGE, GridBaseObje...
 
 
 namespace ug {
 namespace nernst_planck {
-
-
 
 
 template <typename TBaseElem>

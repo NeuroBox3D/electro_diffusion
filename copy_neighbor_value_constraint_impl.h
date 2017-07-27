@@ -5,7 +5,17 @@
  *      Author: mbreit
  */
 
-#include "copy_neighbor_value_constraint.h"
+#include <cstddef>                                                 // for size_t
+#include <algorithm>                                               // for sort
+
+#include "common/error.h"                                          // for UG_COND_THROW
+#include "common/math/math_vector_matrix/math_vector_functions.h"  // for VecNormalize
+#include "lib_disc/common/multi_index.h"                           // for DoFIndex
+#include "lib_disc/dof_manager/dof_distribution.h"                 // for DoFDistribution
+#include "lib_disc/function_spaces/dof_position_util.h"            // for InnerDoFPosition
+#include "lib_grid/grid/grid_base_objects.h"                       // for Edge, Vertex...
+#include "lib_grid/tools/subset_group.h"                           // for SubsetGroup
+
 
 namespace ug{
 namespace nernst_planck{
@@ -355,7 +365,7 @@ void CopyNeighborValueConstraint<TDomain, TAlgebra>::adjust_solution
 
 template <typename TDomain, typename TAlgebra>
 void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
-set_sorting_direction(std::vector<number> vDir)
+set_sorting_direction(const std::vector<number>& vDir)
 {
 	UG_COND_THROW(vDir.size() < TDomain::dim, "Given sorting direction does not have enough components.");
 

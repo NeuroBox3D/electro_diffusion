@@ -5,17 +5,29 @@
  *      Author: mbreit
  */
 
-#include "lib_grid/parallelization/distribution.h" // for interface states
 #include "intf_distro_adjuster.h"
-#include "lib_grid/grid/grid_base_object_traits.h"
-#include "lib_grid/grid/neighborhood.h"				// CollectNeighbors
-#include "lib_grid/algorithms/attachment_util.h"
 
-#include <set>
+#include <cstddef>                                          // for size_t
+#include <set>                                              // for set, set<>::iterator
+
+#include "common/error.h"                                   // for UG_COND_THROW
+#include "lib_disc/domain.h"                                // for Domain1d, Domain2d, Domain3d
+#include "lib_grid/grid/grid.h"                             // for Grid::traits, Grid::traits<>::secure_container
+#include "lib_grid/grid/grid_base_object_traits.h"          // for geometry_traits, geometry_traits<>::const_i...
+#include "lib_grid/grid/grid_base_objects.h"                // for Vertex, GridObject (ptr only)
+#include "lib_grid/grid/neighborhood.h"                     // for CollectNeighbors
+#include "lib_grid/multi_grid.h"                            // for MultiGrid
+#ifdef UG_PARALLEL
+	#include "lib_grid/parallelization/distributed_grid.h"  // for DistributedGridManager, ElementStatusTypes:...
+#endif
+#include "lib_grid/parallelization/distribution.h"          // for InterfaceStates::IS_VSLAVE, InterfaceStates...
+#include "lib_grid/tools/grid_level.h"                      // for GridLevel
+#include "lib_grid/tools/selector_multi_grid.h"             // for MGSelector
+#include "lib_grid/tools/surface_view.h"                    // for SurfaceView, SurfaceView::SurfaceConstants:...
+
 
 namespace ug {
 namespace nernst_planck {
-
 
 template <typename TDomain>
 void PNPDistroManager<TDomain>::collect_neighbors

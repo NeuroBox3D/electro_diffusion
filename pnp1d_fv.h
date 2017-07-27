@@ -8,15 +8,28 @@
 #ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__PNP1D_FV_H_
 #define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__PNP1D_FV_H_
 
-#include "common/common.h"
-#include "common/math/ugmath.h"
-#include "lib_disc/spatial_disc/elem_disc/elem_disc_interface.h"
-#include "lib_disc/spatial_disc/disc_util/fvho_geom.h"
-#include "lib_disc/spatial_disc/disc_util/geom_provider.h"
+#include <cstddef>                                                  // for size_t
+#include <vector>                                                   // for vector
+
+#include "common/types.h"                                           // for number
+#include "common/math/math_vector_matrix/math_matrix.h"             // for MathMatrix
+#include "common/math/math_vector_matrix/math_vector.h"             // for MathVector
+#include "common/util/smart_pointer.h"                              // for SmartPtr
+#include "lib_disc/common/local_algebra.h"                          // for LocalVector, LocalMatrix (ptr only)
+#include "lib_disc/local_finite_element/local_finite_element_id.h"  // for LFEID
+#include "lib_disc/spatial_disc/elem_disc/elem_disc_interface.h"    // for IElemDisc
+#include "lib_disc/spatial_disc/elem_disc/err_est_data.h"           // for MultipleSideAndElemErrEstData
+#include "lib_grid/grid/grid.h"                                     // for Grid, Grid::AttachmentAccessor
+#include "lib_grid/common_attachments.h"                            // for ANumber
+#include "lib_grid/grid/grid_base_objects.h"                        // for GridObject (ptr only), ReferenceObjectID, Vertex (ptr only)
 
 
-namespace ug{
-namespace nernst_planck{
+namespace ug {
+
+// forward declaration
+template <typename TDomain> class ApproximationSpace;
+
+namespace nernst_planck {
 
 /// \addtogroup plugin_nernst_planck
 /// \{
