@@ -34,6 +34,11 @@ class MorphoGen
 		void set_num_neck_filaments(size_t nFil);
 		void set_num_filaments(size_t nFil);
 		void set_fil_anisotropic(bool filAniso);
+		void set_seed(size_t seed);
+		void set_randomized(bool rand);
+		void set_membrane_envelope_radius(number mem_env_rad);
+		void set_filament_envelope_radius(number fil_env_rad);
+		void set_resolution(size_t nRimVrt);
 
 		/// creates a 3d spine morphology with 1d extensions
 		void create_dendrite(const std::string& filename);
@@ -106,10 +111,11 @@ class MorphoGen
 
 			number neck_radius;
 			number head_radius;
+			number filament_envelope_radius;
+			number filament_width;
 			number neck_end_z;
 			number head_center_z;
 			number head_opening_theta;
-			number filament_width;
 		};
 
 		void create_envelope(const std::vector<int>& vExtrudeSI, number offset, int newVolSI, const std::vector<int>& vNewFrontSI);
@@ -178,8 +184,8 @@ class MorphoGen
 		number DENDRITE_LENGTH;
 		number DENDRITE_RADIUS;
 		number MEMBRANE_RADIUS;
-		number MEMBRANE_ENVELOPE_RADIUS;
-		size_t DENDRITE_RIM_VERTICES;
+		number m_membraneEnvelopeRadius;
+		size_t m_dendriteRimVertices;
 
 		number SPINE_NECK_RADIUS;
 		number SPINE_NECK_LENGTH;
@@ -187,7 +193,7 @@ class MorphoGen
 
 		number FILAMENT_WIDTH;
 		number FILAMENT_RIM_VERTICES;
-		number FILAMENT_ENVELOPE_RADIUS;
+		number m_filamentEnvelopeRadius;
 
 		number EXTENSION_LENGTH;
 		number EXTENSION_COMPARTMENT_LENGTH;

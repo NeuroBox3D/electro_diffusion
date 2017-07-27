@@ -52,14 +52,14 @@ MorphoGen::MorphoGen()
   DENDRITE_LENGTH(1200.0),
   DENDRITE_RADIUS(200.0),
   MEMBRANE_RADIUS(10.0),
-  MEMBRANE_ENVELOPE_RADIUS(20.0),
-  DENDRITE_RIM_VERTICES(16),
+  m_membraneEnvelopeRadius(20.0),
+  m_dendriteRimVertices(16),
   SPINE_NECK_RADIUS(100.0),
   SPINE_NECK_LENGTH(450.0),
   SPINE_HEAD_RADIUS(175.0),
   FILAMENT_WIDTH(10.0),
   FILAMENT_RIM_VERTICES(6),
-  FILAMENT_ENVELOPE_RADIUS(10.0),
+  m_filamentEnvelopeRadius(10.0),
   EXTENSION_LENGTH(1.0e5),
   EXTENSION_COMPARTMENT_LENGTH(1.0e3),
   BOX_MARGIN(150.0),
@@ -122,6 +122,33 @@ void MorphoGen::set_fil_anisotropic(bool filAniso)
 {
 	m_bFilAnisotropic = filAniso;
 }
+
+void MorphoGen::set_seed(size_t seed)
+{
+	std::srand(seed);
+}
+
+void MorphoGen::set_randomized(bool rand)
+{
+	if (!rand) return;
+	std::srand(std::time(0));
+}
+
+void MorphoGen::set_membrane_envelope_radius(number mem_env_rad)
+{
+	m_membraneEnvelopeRadius = mem_env_rad;
+}
+
+void MorphoGen::set_filament_envelope_radius(number fil_env_rad)
+{
+	m_filamentEnvelopeRadius = fil_env_rad;
+}
+
+void MorphoGen::set_resolution(size_t nRimVrt)
+{
+	m_dendriteRimVertices = nRimVrt;
+}
+
 
 
 
@@ -207,7 +234,7 @@ void MorphoGen::create_shaft()
 	left_end_center.coord(0) = -DENDRITE_LENGTH / 2.0;
 	number radius = DENDRITE_RADIUS;
 
-	create_circle(left_end_center, vector3(1,0,0), radius, DENDRITE_RIM_VERTICES);
+	create_circle(left_end_center, vector3(1,0,0), radius, m_dendriteRimVertices);
 
 	// assign subset
 	m_sh.assign_subset(m_sel.begin<Vertex>(), m_sel.end<Vertex>(), MEM_OUTER_BND_SI);
@@ -221,7 +248,7 @@ void MorphoGen::create_shaft()
 
 	// make extruded faces as regular as possible:
 	// length of extrusion should be as near as possible to current edge length in circle
-	number numExtrudes = floor(DENDRITE_LENGTH/(2*radius*sin(PI/DENDRITE_RIM_VERTICES)));
+	number numExtrudes = floor(DENDRITE_LENGTH/(2*radius*sin(PI/m_dendriteRimVertices)));
 	size_t nExtrudes = std::max((size_t) numExtrudes, (size_t) 1);
 	number extrude_length = DENDRITE_LENGTH / nExtrudes;
 
@@ -695,7 +722,7 @@ void MorphoGen::graft_spine()
 
 	// remove short edges
 	// TODO: replace this calculation by member: m_elemLength
-	number arc_length = 2.0 * PI / (number) DENDRITE_RIM_VERTICES;
+	number arc_length = 2.0 * PI / (number) m_dendriteRimVertices;
 	number numExtrudes = floor(DENDRITE_LENGTH/(2*DENDRITE_RADIUS*sin(arc_length/2.0)));
 	size_t nExtrudes = std::max((size_t) numExtrudes, (size_t) 1);
 	number extrude_length = DENDRITE_LENGTH / nExtrudes;
@@ -1406,7 +1433,8 @@ void MorphoGen::MinDistCalculator::calculate_minDist
 	{
 		if (vInd[j] == ind) continue;
 
-		number dist = VecDistanceSq(test_i, vPoints[vInd[j]]);
+		number dist = VecDistance(test_i, vPoints[vInd[j]])
+					  - 2*(filament_width + filament_envelope_radius);
 		if (dist < minDistOut)
 		{
 			minDistOut = dist;
@@ -1424,8 +1452,8 @@ void MorphoGen::MinDistCalculator::calculate_minDist
 		number theta = acos((head_center_z - test_i.z()) / VecDistance(test_i, vector3(0,0,head_center_z)));
 		if (theta > head_opening_theta)
 		{
-			dist = head_radius - VecDistance(test_i, vector3(0,0,head_center_z)) + filament_width;
-			dist = dist*dist;
+			dist = head_radius - VecDistance(test_i, vector3(0,0,head_center_z))
+				   - filament_width - filament_envelope_radius;
 		}
 		else
 		{
@@ -1441,13 +1469,14 @@ void MorphoGen::MinDistCalculator::calculate_minDist
 			vector3 nearestRimPt(head_radius*sin(head_opening_theta)*cos(phi),
 								 head_radius*sin(head_opening_theta)*sin(phi),
 								 head_center_z - head_radius*cos(head_opening_theta));
-			dist = VecDistanceSq(test_i, nearestRimPt);
+			dist = VecDistance(test_i, nearestRimPt)
+				   - filament_width - filament_envelope_radius;
 		}
 	}
 	else
 	{
-		dist = neck_radius - sqrt(test_i.x()*test_i.x() + test_i.y()*test_i.y()) + filament_width;
-		dist = dist*dist;
+		dist = neck_radius - sqrt(test_i.x()*test_i.x() + test_i.y()*test_i.y())
+			   - filament_width - filament_envelope_radius;
 	}
 
 	if (dist < minDistOut)
@@ -1467,19 +1496,40 @@ void MorphoGen::make_spherical_filaments()
 	// iteratively removing one realizing the smallest distance to another or the membrane.
 
 	// some geometrical parameters
-	number neck_radius = SPINE_NECK_RADIUS - MEMBRANE_RADIUS;
-	number head_radius = SPINE_HEAD_RADIUS - MEMBRANE_RADIUS;
+	number neck_radius = SPINE_NECK_RADIUS - MEMBRANE_RADIUS - m_membraneEnvelopeRadius;
+	number head_radius = SPINE_HEAD_RADIUS - MEMBRANE_RADIUS - m_membraneEnvelopeRadius;
 	number neck_start_z = DENDRITE_RADIUS;
 	number neck_end_z = DENDRITE_RADIUS + SPINE_NECK_LENGTH;
-	number head_opening_theta = asin(neck_radius / head_radius);
-	number dist_head_center_neck_end = head_radius * cos(head_opening_theta);
+	number head_opening_theta = asin(SPINE_NECK_RADIUS / SPINE_HEAD_RADIUS);
+	number dist_head_center_neck_end = SPINE_HEAD_RADIUS * cos(head_opening_theta);
 	number head_center_z = neck_end_z + dist_head_center_neck_end;
-	number head_vol = 2.0/3.0*PI*(1+cos(head_opening_theta))*head_radius*head_radius*head_radius;
+
+	// surfaces are not exactly spherical and cylindrical
+	// as the effect is strongest for the head, we calculate a safety distance for the head
+	// while the theta-component is correct, the phi-component is a good estimate
+	number safety_neck = neck_radius * (1.0 - cos(PI / 8.0));
+	number safety_head = head_radius * (1.0 - cos(head_opening_theta/10.0) * cos(PI / 8.0));
+	neck_radius -= safety_neck;
+	head_radius -= safety_head;
+
+	number head_vol = 0.6666666*PI*(1+cos(head_opening_theta))*head_radius*head_radius*head_radius
+					  + 0.3333333*PI*neck_radius*neck_radius*dist_head_center_neck_end;
 	number neck_vol = PI*neck_radius*neck_radius*SPINE_NECK_LENGTH;
 	number head_vol_rel = head_vol / (head_vol + neck_vol);
 
+#if 0
+// DEBUG
+size_t nTheta = 36;
+size_t nPhi = 36;
+size_t nR = 30;
+std::vector<size_t> vTheta(nTheta);
+std::vector<size_t> vPhi(nPhi);
+std::vector<size_t> vR(nR);
+size_t cnt = 0;
+#endif
+
 	// distribute mid points
-	size_t nTest = 10*NUM_FILAMENTS;
+	size_t nTest = 100*NUM_FILAMENTS;
 	std::vector<vector3> vTest;
 	vTest.reserve(nTest);
 	for (size_t i = 0; i < nTest; ++i)
@@ -1490,19 +1540,30 @@ void MorphoGen::make_spherical_filaments()
 		if (random < head_vol_rel)
 		{
 			number r, theta, phi;
-			bool allowed = false;
-			while (!allowed)
+			while (true)
 			{
 				r = (number) std::rand() / RAND_MAX;
-				r = r*r*r; // distribution density must be quadratic in r
-				r = head_radius * (1-r);
+				r = std::pow(r, 0.33333333); // distribution density must be quadratic in r
+				r *= head_radius;
 
-				theta = PI * (number) std::rand() / RAND_MAX;
-				if (theta > head_opening_theta || r*cos(theta) < dist_head_center_neck_end)
-					allowed = true;
+				theta = 2*((number) std::rand() / RAND_MAX) - 1; // theta \in [0,1]
+				theta = acos(theta); // adjusting distro density to achieve equal distro in sphere
+				// now, theta should be correctly distributed in [0, pi]
+
+				if (r*cos(theta) < dist_head_center_neck_end)
+					break;
 			}
 
-			phi = 2.0*PI * (number) std::rand() / RAND_MAX;
+
+			phi = 2.0*PI * ((number) std::rand() / RAND_MAX);
+
+#if 0
+// DEBUG
+++vTheta[(size_t) floor(theta*nTheta/PI)];
+++vPhi[(size_t) floor(phi*nPhi/(2.0*PI))];
+++vR[(size_t) floor(r*nR/head_radius)];
+++cnt;
+#endif
 
 			vTest.push_back(vector3(r*sin(theta)*cos(phi),
 				                    r*sin(theta)*sin(phi),
@@ -1514,10 +1575,10 @@ void MorphoGen::make_spherical_filaments()
 		{
 			number r, phi, z;
 			r = (number) std::rand() / RAND_MAX;
-			r = r*r; // distribution density must be linear in r
-			r = neck_radius * (1-r);
-			phi = 2.0*PI * (number) std::rand() / RAND_MAX;
-			z = SPINE_NECK_LENGTH * (number) std::rand() / RAND_MAX;
+			r = std::pow(r, 0.5); // distribution density must be linear in r
+			r *= neck_radius;
+			phi = 2.0*PI * ((number) std::rand() / RAND_MAX);
+			z = SPINE_NECK_LENGTH * ((number) std::rand() / RAND_MAX);
 
 			vTest.push_back(vector3(r*cos(phi),
 				                    r*sin(phi),
@@ -1525,6 +1586,56 @@ void MorphoGen::make_spherical_filaments()
 		}
 	}
 
+#if 0
+// DEBUG
+	UG_LOGN("Rand distro:");
+	for (size_t i = 0; i < nRandom; ++i)
+	{
+		size_t n = (size_t) floor(100.0*vRandom[i]/(number)rndCnt);
+		UG_LOGN(std::string(n, '+') << "  (" << 100.0*vRandom[i]/(number)rndCnt << "%)  " << i << "-" << (i+1));
+	}
+	UG_LOGN("");
+	UG_LOGN("Theta distro:");
+	for (size_t i = 0; i < nTheta; ++i)
+	{
+		size_t n = (size_t) floor(100.0*vTheta[i]/(number)cnt);
+		UG_LOGN(std::string(n, '+') << "  (" << 100.0*vTheta[i]/(number)cnt << "%)  " << (180/nTheta)*i << "-" << (180/nTheta)*(i+1));
+	}
+	UG_LOGN("");
+	UG_LOGN("Phi distro:");
+	for (size_t i = 0; i < nPhi; ++i)
+	{
+		size_t n = (size_t) floor(100.0*vPhi[i]/(number)cnt);
+		UG_LOGN(std::string(n, '+') << "  (" << 100.0*vPhi[i]/(number)cnt << "%)  " << (360/nPhi)*i << "-" << (360/nPhi)*(i+1));
+	}
+	UG_LOGN("");
+	UG_LOGN("R distro:");
+	for (size_t i = 0; i < nR; ++i)
+	{
+		size_t n = (size_t) floor(100.0*vR[i]/(number)cnt);
+		UG_LOGN(std::string(n, '+') << "  (" << 100.0*vR[i]/(number)cnt << "%)  " << i << "-" << (i+1));
+	}
+	UG_LOGN("");
+#endif
+
+#if 0
+	// DEBUG: print out all filament centers to ugx
+	m_grid.clear_geometry();
+	for (size_t i = 0; i < nTest; ++i)
+	{
+		Vertex* v = *m_grid.create<RegularVertex>();
+		m_aaPos[v] = vTest[i];
+		m_sh.assign_subset(v, 0);
+	}
+	AssignSubsetColors(m_sh);
+	std::string fileName("debug.ugx");
+	GridWriterUGX ugxWriter;
+	ugxWriter.add_grid(m_grid, "defGrid", aPosition);
+	ugxWriter.add_subset_handler(m_sh, "defSH", 0);
+	if (!ugxWriter.write_to_file(fileName.c_str()))
+		UG_THROW("Grid could not be written to file '" << fileName << "'.");
+	exit(0);
+#endif
 
 	// find minimal distances
 	std::vector<number> vMinDist(nTest, std::numeric_limits<number>::infinity());
@@ -1534,11 +1645,12 @@ void MorphoGen::make_spherical_filaments()
 
 	MinDistCalculator mdc;
 	mdc.neck_radius = neck_radius;
-	mdc.neck_end_z = neck_end_z;
 	mdc.head_radius = head_radius;
+	mdc.filament_envelope_radius = m_filamentEnvelopeRadius;
+	mdc.filament_width = FILAMENT_WIDTH;
+	mdc.neck_end_z = neck_end_z;
 	mdc.head_center_z = head_center_z;
 	mdc.head_opening_theta = head_opening_theta;
-	mdc.filament_width = FILAMENT_WIDTH;
 	for (size_t i = 0; i < nTest; ++i)
 		mdc.calculate_minDist(vMinDist[i], vNN[i], i, vTest, vInd, nTest);
 
@@ -1555,7 +1667,43 @@ void MorphoGen::make_spherical_filaments()
 		size_t minInd = vInd[0];
 		UG_COND_THROW(!vStillExists[minInd], "Something went wrong during distribution of filaments.");
 
-		// remove point
+		// If NN is membrane, remove;
+		// otherwise, replace point and NN by new point at their common center
+		// update would have to be adapted accordingly
+		// Hm, this might not work properly if on non-convex geometries...
+		/*
+		vStillExists[minInd] = false;
+		vMinDist[minInd] = std::numeric_limits<number>::infinity();
+		size_t nnInd = vNN[minInd];
+		vNN[minInd] = -1;
+		std::swap(vInd[0], vInd[nTest-1-i]);
+
+		if (minInd < nTest-i) // filament neighbor
+		{
+			VecScaleAdd(vTest[vInd[nnInd]], 0.5, vTest[vInd[nnInd]], 0.5, vTest[vInd[minInd]]);
+
+			// update min dist for moved NN
+			mdc.calculate_minDist(vMinDist[vInd[nnInd]], vNN[vInd[nnInd]], vInd[nnInd], vTest, vInd, nTest-i-1);
+		}
+
+		// update minDists
+		if (minInd < nTest-i) // NN was a filament sphere
+		{
+			mdc.calculate_minDist(vMinDist[vInd[nnInd]], vNN[vInd[nnInd]], vInd[nnInd], vTest, vInd, nTest-i-1);
+
+			for (size_t j = 0; j < nTest-i-1; ++j)
+				if (vNN[vInd[j]] == minInd || vNN[vInd[j]] == nnInd)
+					mdc.calculate_minDist(vMinDist[vInd[j]], vNN[vInd[j]], vInd[j], vTest, vInd, nTest-i-1);
+		}
+		else	// NN was membrane
+		{
+			for (size_t j = 0; j < nTest-i-1; ++j)
+				if (vNN[vInd[j]] == minInd)
+					mdc.calculate_minDist(vMinDist[vInd[j]], vNN[vInd[j]], vInd[j], vTest, vInd, nTest-i-1);
+		}
+		*/
+
+		// just remove point
 		vStillExists[minInd] = false;
 		vMinDist[minInd] = std::numeric_limits<number>::infinity();
 		vNN[minInd] = -1;
@@ -1572,10 +1720,11 @@ void MorphoGen::make_spherical_filaments()
 	{
 		vInd.resize(NUM_FILAMENTS);
 		std::sort(vInd.begin(), vInd.end(), cmp);
-		UG_COND_THROW(sqrt(vMinDist[vInd[0]]) < 2*FILAMENT_WIDTH,
-			"Filaments could not be positioned far enough apart to exclude intersections.");
-		UG_COND_THROW(sqrt(vMinDist[vInd[0]]) < 2*FILAMENT_WIDTH+FILAMENT_ENVELOPE_RADIUS+MEMBRANE_ENVELOPE_RADIUS,
-			"Filaments could not be positioned far enough apart to exclude intersections of their envelopes.");
+		UG_COND_THROW(vMinDist[vInd[0]] < 0.5*FILAMENT_WIDTH,	// arbitrary choice
+			"Filaments could not be positioned far enough apart to exclude intersections\n"
+			"of their envelopes with one another or with the membrane envelope.\n"
+			"Minimal distance is " << vMinDist[vInd[0]] << ", but " << 0.5*FILAMENT_WIDTH << " required.\n"
+			"You may want to try reducing envelope sizes for charges surfaces.");
 	}
 
 
@@ -1716,8 +1865,8 @@ void MorphoGen::create_membrane_and_envelopes()
 		{
 			number r = VecLength(m_tmpFilPos[i]);
 
-			if (r + FILAMENT_WIDTH/2.0 + FILAMENT_ENVELOPE_RADIUS + safety
-				> SPINE_NECK_RADIUS - MEMBRANE_RADIUS - MEMBRANE_ENVELOPE_RADIUS)
+			if (r + FILAMENT_WIDTH/2.0 + m_filamentEnvelopeRadius + safety
+				> SPINE_NECK_RADIUS - MEMBRANE_RADIUS - m_membraneEnvelopeRadius)
 			{
 				UG_THROW("Envelopped filaments will (almost) intersect with envelopped membrane.\n"
 					"Choose smaller envelope widths, fewer filaments or a bigger spine radius.");
@@ -1727,7 +1876,7 @@ void MorphoGen::create_membrane_and_envelopes()
 			for (size_t j = i+1; j < nFil; ++j)
 				minDist = std::min(minDist, VecDistance(m_tmpFilPos[i], m_tmpFilPos[j]));
 
-			if (minDist - FILAMENT_WIDTH - 2*FILAMENT_ENVELOPE_RADIUS - safety < 0)
+			if (minDist - FILAMENT_WIDTH - 2*m_filamentEnvelopeRadius - safety < 0)
 			{
 				UG_THROW("Envelopped filaments will (almost) intersect with each other.\n"
 					"Choose smaller envelope widths, fewer filaments or a bigger spine radius.");
@@ -1741,14 +1890,14 @@ void MorphoGen::create_membrane_and_envelopes()
 	// create envelope around filaments
 	vExtrudeSI.push_back(SURF_CH_BND);
 	vNewFrontSI.push_back(INNER_FRONT_TMP_SI);
-	create_envelope(vExtrudeSI, FILAMENT_ENVELOPE_RADIUS, INNER_SI, vNewFrontSI);
+	create_envelope(vExtrudeSI, m_filamentEnvelopeRadius, INNER_SI, vNewFrontSI);
 
 	// create envelope around outer membrane surface
 	vExtrudeSI[0] = MEM_OUTER_BND_SI;
 	vExtrudeSI.push_back(PSD_OUTER_SI);
 	vNewFrontSI[0] = OUTER_FRONT_TMP_SI;
 	vNewFrontSI.push_back(OUTER_FRONT_TMP_SI);
-	create_envelope(vExtrudeSI, MEMBRANE_ENVELOPE_RADIUS, OUTER_SI, vNewFrontSI);
+	create_envelope(vExtrudeSI, m_membraneEnvelopeRadius, OUTER_SI, vNewFrontSI);
 
 	// create membrane
 	vNewFrontSI[0] = MEM_INNER_BND_SI;
@@ -1759,7 +1908,7 @@ void MorphoGen::create_membrane_and_envelopes()
 	vExtrudeSI = vNewFrontSI;
 	vNewFrontSI[0] = INNER_FRONT_TMP_SI;
 	vNewFrontSI[1] = INNER_FRONT_TMP_SI;
-	create_envelope(vExtrudeSI, -MEMBRANE_ENVELOPE_RADIUS, INNER_SI, vNewFrontSI);
+	create_envelope(vExtrudeSI, -m_membraneEnvelopeRadius, INNER_SI, vNewFrontSI);
 }
 
 
@@ -1868,7 +2017,7 @@ void MorphoGen::create_mark_straight_edge_connection(Vertex* v0, Vertex* v1)
 	const vector3& vec1 = m_aaPos[v1];
 
 	number length = VecDistance(vec0, vec1);
-	number numExtrudes = floor(length / (4*DENDRITE_RADIUS*sin(PI/DENDRITE_RIM_VERTICES)));
+	number numExtrudes = floor(length / (4*DENDRITE_RADIUS*sin(PI/m_dendriteRimVertices)));
 	size_t nExtrudes = std::max((size_t) numExtrudes, (size_t) 1);
 
 	std::vector<Vertex*> vrts(1, v0);
@@ -1930,14 +2079,14 @@ void MorphoGen::mark_straight_edge_connection(Vertex* v0, Vertex* v1)
 void MorphoGen::create_bounding_box()
 {
 	// check margin is big enough
-	UG_COND_THROW(BOX_MARGIN < 2 * MEMBRANE_ENVELOPE_RADIUS,
+	UG_COND_THROW(BOX_MARGIN < 2 * m_membraneEnvelopeRadius,
 		"Box margin is not big enough, should be at least " <<
-		MEMBRANE_ENVELOPE_RADIUS << ".");
+		m_membraneEnvelopeRadius << ".");
 
 	// calculate bounding box
-	number z_low = -(DENDRITE_RADIUS + MEMBRANE_ENVELOPE_RADIUS + BOX_MARGIN);
+	number z_low = -(DENDRITE_RADIUS + m_membraneEnvelopeRadius + BOX_MARGIN);
 	number z_high = (DENDRITE_RADIUS + SPINE_NECK_LENGTH + m_tmpHeadHeight
-					 + MEMBRANE_ENVELOPE_RADIUS + BOX_MARGIN);
+					 + m_membraneEnvelopeRadius + BOX_MARGIN);
 	number y_low = z_low;
 	number y_high = -y_low;
 	number x_low = -0.5*DENDRITE_LENGTH;
@@ -1948,10 +2097,10 @@ void MorphoGen::create_bounding_box()
 
 	std::vector<Vertex*> vCorner[2];
 
-	number numExtrudes = floor(y_high / (2*DENDRITE_RADIUS*sin(PI/DENDRITE_RIM_VERTICES)));
+	number numExtrudes = floor(y_high / (2*DENDRITE_RADIUS*sin(PI/m_dendriteRimVertices)));
 	size_t nExtrudes = std::max((size_t) numExtrudes, (size_t) 1);
 	number extrude_length = 2*y_high / nExtrudes;
-	numExtrudes = floor((z_high-y_low) / (4*DENDRITE_RADIUS*sin(PI/DENDRITE_RIM_VERTICES)));
+	numExtrudes = floor((z_high-y_low) / (4*DENDRITE_RADIUS*sin(PI/m_dendriteRimVertices)));
 	size_t nExtrudesUp = std::max((size_t) numExtrudes, (size_t) 1);
 	number extrude_length_up = (z_high - y_low) / nExtrudesUp;
 
@@ -2038,7 +2187,7 @@ void MorphoGen::create_bounding_box()
 		for (FaceIterator fit = faceSel.begin<Face>(); fit != faceSel.end<Face>(); ++fit)
 		{
 			vector3 c = CalculateCenter(*fit, m_aaPos);
-			if (sqrt(c.y()*c.y() + c.z()*c.z()) < DENDRITE_RADIUS + MEMBRANE_ENVELOPE_RADIUS)
+			if (sqrt(c.y()*c.y() + c.z()*c.z()) < DENDRITE_RADIUS + m_membraneEnvelopeRadius)
 				eraseSel.select(*fit);
 		}
 		SelectInnerSelectionEdges(eraseSel);
@@ -2530,7 +2679,7 @@ void MorphoGen::create_interfaces()
 		vrts.assign(m_sel.begin<Vertex>(), m_sel.end<Vertex>());
 		edges.assign(m_sel.begin<Edge>(), m_sel.end<Edge>());
 		faces.assign(m_sel.begin<Face>(), m_sel.end<Face>());
-		vector3 dir(-mult*MEMBRANE_ENVELOPE_RADIUS, 0.0, 0.0);
+		vector3 dir(-mult*m_membraneEnvelopeRadius, 0.0, 0.0);
 		m_sh.set_default_subset_index(INNER_SI);
 		Extrude(m_grid, &vrts, &edges, &faces, dir, m_aaPos,
 				EO_CREATE_FACES | EO_CREATE_VOLUMES, NULL);
@@ -2631,7 +2780,7 @@ void MorphoGen::create_extensions()
 		v[7] = *m_grid.create<RegularVertex>();
 
 		number fac = DENDRITE_RADIUS-MEMBRANE_RADIUS;
-		vector3 dir(-mult*MEMBRANE_ENVELOPE_RADIUS, 0.0, 0.0);
+		vector3 dir(-mult*m_membraneEnvelopeRadius, 0.0, 0.0);
 		VecAdd(m_aaPos[v[1]], m_aaPos[v[0]], dir);
 		VecAdd(m_aaPos[v[2]], m_aaPos[v[1]], vector3(-0.01*mult*fac, -mult*0.5*fac, 0.5*fac));
 		VecAdd(m_aaPos[v[3]], m_aaPos[v[0]], vector3(-0.01*mult*fac, -mult*0.5*fac, 0.5*fac));
@@ -2661,7 +2810,7 @@ void MorphoGen::create_extensions()
 		SelectAssociatedVertices(m_sel, m_sel.begin<Edge>(), m_sel.end<Edge>());
 
 		// double extrusion length until compartment length reached
-		number nExtrusion = floor(log2(EXTENSION_COMPARTMENT_LENGTH / MEMBRANE_ENVELOPE_RADIUS));
+		number nExtrusion = floor(log2(EXTENSION_COMPARTMENT_LENGTH / m_membraneEnvelopeRadius));
 		size_t nExtr = (size_t) std::max(0.0, nExtrusion);
 
 		std::vector<Vertex*> vrts;
@@ -2752,7 +2901,7 @@ void MorphoGen::create_dendrite(const std::string& filename)
 	// create box bounding extracellular space
 	try {create_bounding_box();}
 	UG_CATCH_THROW("Could not create bounding box.");
-/*
+
 	// tetrahedralize filaments, inner and outer
 	try {tetrahedralize();}
 	UG_CATCH_THROW("Tetrahedralization failed.");
@@ -2771,7 +2920,7 @@ void MorphoGen::create_dendrite(const std::string& filename)
 
 	// fix volume orientation
 	FixOrientation(m_grid, m_grid.begin<Volume>(), m_grid.end<Volume>(), m_aaPos);
-*/
+
 	// name and colorize subsets
 	AssignSubsetColors(m_sh);
 	m_sh.set_subset_name("Intracellular_Domain", 0);
@@ -2820,7 +2969,7 @@ void MorphoGen::create_dendrite(const std::string& filename)
 	ref.refine();
 
 	fileName = fileName.substr(0, fileName.size()-4).append("_refined.ugx");
-	number offset = 2*DENDRITE_RADIUS + 2*MEMBRANE_RADIUS + 2*MEMBRANE_ENVELOPE_RADIUS
+	number offset = 2*DENDRITE_RADIUS + 2*MEMBRANE_RADIUS + 2*m_membraneEnvelopeRadius
 		+ m_tmpHeadHeight + SPINE_NECK_LENGTH + 4*BOX_MARGIN;
 	try {SaveGridHierarchyTransformed(*dom.grid(), *dom.subset_handler(), (filePath+fileName).c_str(), offset);}
 	UG_CATCH_THROW("Grid could not be written to file '" << filePath << fileName << "'.");
