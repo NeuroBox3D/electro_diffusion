@@ -1333,7 +1333,7 @@ void MorphoGen::make_neck_filaments()
 		basePos.coord(0) = filPos[2*i] * (SPINE_NECK_RADIUS-MEMBRANE_RADIUS);
 		basePos.coord(1) = filPos[2*i+1] * (SPINE_NECK_RADIUS-MEMBRANE_RADIUS);
 		basePos.coord(2) = DENDRITE_RADIUS;
-		m_tmpFilPos.push_back(vector2(basePos.coord(0), basePos.coord(1)));
+		m_tmpFilPos.push_back(vector3(basePos.coord(0), basePos.coord(1), DENDRITE_RADIUS + SPINE_NECK_LENGTH / 2.0));
 
 //UG_LOGN("filament base position: " << basePos);
 
@@ -1757,6 +1757,7 @@ size_t cnt = 0;
 	bool autoselectionEnabled = m_sel.autoselection_enabled();
 	m_sel.enable_autoselection(true);
 
+	m_tmpFilPos.clear();
 	for (size_t i = 0; i < NUM_FILAMENTS; ++i)
 	{
 		//UG_LOGN("Filament sphere center " << i << " at " << vTest[vInd[i]] << ".");
@@ -1768,6 +1769,10 @@ size_t cnt = 0;
 
 		// create the coarse ico
 		GenerateIcosahedron(m_grid, vTest[vInd[i]], FILAMENT_WIDTH, aPosition);
+
+		// remember filament center (must be marked as hole in tetrahedralization process)
+		m_tmpFilPos.push_back(vTest[vInd[i]]);
+		UG_LOGN("Filament center at " << m_tmpFilPos.back());
 
 		// assign subset
 		m_sh.assign_subset(m_sel.begin<Vertex>(), m_sel.end<Vertex>(), SURF_CH_BND);
@@ -1888,7 +1893,8 @@ void MorphoGen::create_membrane_and_envelopes()
 		number safety = FILAMENT_WIDTH;
 		for (size_t i = 0; i < nFil; ++i)
 		{
-			number r = VecLength(m_tmpFilPos[i]);
+			const vector3& vFilPos = m_tmpFilPos[i];
+			number r = sqrt(vFilPos[0]*vFilPos[0] + vFilPos[1]*vFilPos[1]);
 
 			if (r + FILAMENT_WIDTH/2.0 + m_filamentEnvelopeRadius + safety
 				> SPINE_NECK_RADIUS - MEMBRANE_RADIUS - m_membraneEnvelopeRadius)
@@ -2491,17 +2497,8 @@ void MorphoGen::tetrahedralize()
 	SelectAssociatedEdges(m_sel, m_sel.begin<Face>(), m_sel.end<Face>());
 	SelectAssociatedVertices(m_sel, m_sel.begin<Edge>(), m_sel.end<Edge>());
 
-	size_t nFil = m_tmpFilPos.size();
-	std::vector<vector3> holes(nFil);
-	for (size_t i = 0; i < nFil; ++i)
-	{
-		holes[i].x() = m_tmpFilPos[i].x();
-		holes[i].y() = m_tmpFilPos[i].y();
-		holes[i].z() = DENDRITE_RADIUS + SPINE_NECK_LENGTH / 2.0;
-	}
-
 	m_sh.set_default_subset_index(INNER_SI);
-	try {tetrahedralize_selection(INNER_SI, &holes);}
+	try {tetrahedralize_selection(INNER_SI, &m_tmpFilPos);} // mark filament centers as holes
 	UG_CATCH_THROW("Tetrahedralization of intracellular space failed.");
 
 	// change temporal inner front subset to inner
@@ -2522,7 +2519,7 @@ void MorphoGen::tetrahedralize()
 	SelectAssociatedVertices(m_sel, m_sel.begin<Edge>(), m_sel.end<Edge>());
 
 	m_sh.set_default_subset_index(OUTER_SI);
-	holes.resize(1);
+	std::vector<vector3> holes(1);
 	holes[0] = vector3(0.0, 0.0, 0.0);
 	try {tetrahedralize_selection(OUTER_SI, &holes);}
 	UG_CATCH_THROW("Tetrahedralization of extracellular space failed.");

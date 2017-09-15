@@ -190,7 +190,7 @@ class MorphoGen
 
 		// temporary objects
 		std::vector<Edge*> m_tmpSpineEdges;
-		std::vector<vector2> m_tmpFilPos;
+		std::vector<vector3> m_tmpFilPos;
 		number m_tmpHeadHeight;
 
 		// morphology params
