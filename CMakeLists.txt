@@ -25,6 +25,7 @@ message(STATUS "      Tetgen:   ${NPTetgen} (options are: ON, OFF)")
 
 # sources
 set(SOURCES nernst_planck_plugin.cpp
+			nernst_planck_util.cpp
             pnp1d_fv1.cpp
             pnp1d_fv.cpp
             electric_circuit.cpp
