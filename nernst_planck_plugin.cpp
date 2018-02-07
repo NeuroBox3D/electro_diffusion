@@ -189,15 +189,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
 
-	// scaling of dimless solution vectors
-	{
-		reg.add_function("scale_dimless_vector", &scale_dimless_vector<TGridFunction>,
-			grp.c_str(), "", "scaled output vector#dimless input vector#vector of scaling factors for each function",
-			"Scales the dimensionless input vector using the given scaling factors for each function and writes "
-			"the result to the output vector");
-	}
-
-
 	// flux field export
 	{
 		typedef FluxExporter<TGridFunction> T;

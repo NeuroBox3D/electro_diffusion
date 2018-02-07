@@ -1,9 +1,11 @@
 /*
- * nernst_planck_util.h
+ * nernst_planck_util.cpp
  *
  *  Created on: 17.07.2014
  *      Author: mbreit
  */
+
+#include "nernst_planck_util.h"
 
 #include <cstddef>                                                  // for size_t, NULL
 #include <fstream>                                                  // for operator<<, basic_ostream, char...
@@ -12,11 +14,15 @@
 
 #include "common/assert.h"                                          // for UG_ASSERT
 #include "common/error.h"                                           // for UG_CATCH_THROW, UG_THROW, UG_CO...
+#include "lib_algebra/cpu_algebra_types.h"                          // for CPUAlgebra
 #include "lib_disc/common/function_group.h"                         // for FunctionGroup
 #include "lib_disc/common/multi_index.h"                            // for DoFIndex, DoFRef
 #include "lib_disc/dof_manager/dof_distribution.h"                  // for DoFDistribution, DoFDistributio...
+#include "lib_disc/domain.h"                                        // for Domain1d, Doma...
 #include "lib_disc/domain_traits.h"                                 // for domain_traits
+#include "lib_disc/function_spaces/approximation_space.h"           // for ApproximationSpace
 #include "lib_disc/function_spaces/dof_position_util.h"             // for InnerDoFPosition
+#include "lib_disc/function_spaces/grid_function.h"                 // for GridFunction
 #include "lib_disc/local_finite_element/local_finite_element_id.h"  // for LFEID
 #include "lib_grid/grid/grid_base_object_traits.h"                  // for VertexIterator
 #include "lib_grid/grid/grid_base_objects.h"                        // for Vertex (ptr only), GridBaseObje...
@@ -36,12 +42,8 @@
 #include "../MembranePotentialMapping/vm2ug_rework.h"               // for Mapper
 
 
-namespace ug{
-
-// forward declaration
-template <typename TDomain> class ApproximationSpace;
-
-namespace nernst_planck{
+namespace ug {
+namespace nernst_planck {
 
 
 template <typename TGridFunction>
@@ -73,8 +75,8 @@ number writeResidualsToFile
 	//	get vertex iterator for current subset
 	typedef typename DoFDistribution::traits<Vertex>::const_iterator itType;
 
-	ConstSmartPtr<DoFDistribution> dd1 = sol1->approx_space()->dof_distribution(GridLevel::TOP);
-	ConstSmartPtr<DoFDistribution> dd2 = sol2->approx_space()->dof_distribution(GridLevel::TOP);
+	ConstSmartPtr<DoFDistribution> dd1 = sol1->approx_space()->dof_distribution(GridLevel());
+	ConstSmartPtr<DoFDistribution> dd2 = sol2->approx_space()->dof_distribution(GridLevel());
 
 	itType it1 = dd1->template begin<Vertex>();
 	itType it2 = dd2->template begin<Vertex>();
@@ -223,7 +225,7 @@ void adjust_geom_after_refinement
 
 // helper function
 template <typename TGridFunction, typename TBaseElem>
-void exportSolution
+static void exportSolution
 (
 	SmartPtr<TGridFunction> solution,
 	size_t si,
@@ -486,76 +488,6 @@ void importSolution
 }
 
 
-template <typename TBaseElem, typename TGridFunction>
-void scale_dof_indices
-(
-	ConstSmartPtr<DoFDistribution> dd,
-	SmartPtr<TGridFunction> vecOut,
-	ConstSmartPtr<TGridFunction> vecIn,
-	const std::vector<number>& vScale
-)
-{
-	typename DoFDistribution::traits<TBaseElem>::const_iterator iter, iterEnd;
-	std::vector<DoFIndex> vInd;
-
-	try
-	{
-		// iterate all elements (including SHADOW_RIM_COPY!)
-		iter = dd->template begin<TBaseElem>(SurfaceView::ALL);
-		iterEnd = dd->template end<TBaseElem>(SurfaceView::ALL);
-		for (; iter != iterEnd; ++iter)
-		{
-			for (size_t fi = 0; fi < dd->num_fct(); ++fi)
-			{
-				size_t nInd = dd->inner_dof_indices(*iter, fi, vInd);
-
-				// remember multi indices
-				for (size_t dof = 0; dof < nInd; ++dof)
-					DoFRef(*vecOut, vInd[dof]) = vScale[fi] * DoFRef(*vecIn, vInd[dof]);
-			}
-		}
-	}
-	UG_CATCH_THROW("Error while scaling vector.")
-}
-
-
-
-template <typename TGridFunction>
-void scale_dimless_vector
-(
-	SmartPtr<TGridFunction> scaledVecOut,
-	ConstSmartPtr<TGridFunction> dimlessVecIn,
-	const std::vector<number>& scalingFactors
-)
-{
-	// check that the correct numbers of scaling factors are given
-	size_t n = scalingFactors.size();
-	UG_COND_THROW(n != dimlessVecIn->num_fct(), "Number of scaling factors (" << n << ") "
-			"does not match number of functions given in dimless vector (" << dimlessVecIn->num_fct() << ").");
-
-	// check that input and output vectors have the same number of components and dofs
-	UG_COND_THROW(n != scaledVecOut->num_fct(), "Input and output vectors do not have "
-			"the same number of functions (" << n << " vs. " << scaledVecOut->num_fct() << ").");
-	for (size_t fct = 0; fct < n; ++fct)
-	{
-		UG_COND_THROW(dimlessVecIn->num_dofs(fct) != scaledVecOut->num_dofs(fct),
-				"Input and output vectors do not have the same number of DoFs for function " << fct
-				<< " (" << dimlessVecIn->num_dofs(fct) << " vs. " << scaledVecOut->num_dofs(fct) << ").");
-	}
-
-	ConstSmartPtr<DoFDistribution> dd = dimlessVecIn->dof_distribution();
-
-	if (dd->max_dofs(VERTEX))
-		scale_dof_indices<Vertex, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
-	if (dd->max_dofs(EDGE))
-		scale_dof_indices<Edge, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
-	if (dd->max_dofs(FACE))
-		scale_dof_indices<Face, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
-	if (dd->max_dofs(VOLUME))
-		scale_dof_indices<Volume, TGridFunction>(dd, scaledVecOut, dimlessVecIn, scalingFactors);
-}
-
-
 
 template <typename TDomain>
 void mark_global(SmartPtr<IRefiner> refiner, SmartPtr<ApproximationSpace<TDomain> > approx)
@@ -577,6 +509,53 @@ void mark_global(SmartPtr<IRefiner> refiner, SmartPtr<ApproximationSpace<TDomain
 
 
 
+// template specializations
+#ifdef UG_DIM_1
+	template void adjust_geom_after_refinement<Domain1d>(SmartPtr<ApproximationSpace<Domain1d> >, const char*, const char*);
+	template void mark_global<Domain1d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain1d> >);
 
-} // namspace calciumDynamics
+	#ifdef UG_CPU_1
+		template number writeResidualsToFile<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const char*, const char*, const char*);
+	#endif
+	#ifdef UG_CPU_5
+		template number writeResidualsToFile<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
+	#endif
+#endif
+#ifdef UG_DIM_2
+	template void adjust_geom_after_refinement<Domain2d>(SmartPtr<ApproximationSpace<Domain2d> >, const char*, const char*);
+	template void mark_global<Domain2d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain2d> >);
+
+	#ifdef UG_CPU_1
+		template number writeResidualsToFile<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const char*, const char*, const char*);
+	#endif
+	#ifdef UG_CPU_5
+		template number writeResidualsToFile<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
+	#endif
+#endif
+#ifdef UG_DIM_3
+	template void adjust_geom_after_refinement<Domain3d>(SmartPtr<ApproximationSpace<Domain3d> >, const char*, const char*);
+	template void mark_global<Domain3d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain3d> >);
+
+	#ifdef UG_CPU_1
+		template number writeResidualsToFile<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const char*, const char*, const char*);
+	#endif
+	#ifdef UG_CPU_5
+		template number writeResidualsToFile<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
+	#endif
+#endif
+
+
+} // namspace nernst_planck
 } // namespace ug

@@ -76,11 +76,10 @@ void adjust_geom_after_refinement
  *
  * \warning This function is very old and will probably not work properly.
  */
-template <typename TVector, typename TDomain>
+template <typename TGridFunction>
 void exportSolution
 (
-	const TVector& solution,
-	const ApproximationSpace<TDomain>& approx,
+	SmartPtr<TGridFunction> solution,
 	const number time,
 	const char* subsetNames,
 	const char* functionNames,
@@ -108,16 +107,6 @@ void importSolution
 	const char* subsetNames,
 	const char* functionName,
 	const char* inFileName
-);
-
-
-
-template <typename TGridFunction>
-void scale_dimless_vector
-(
-	SmartPtr<TGridFunction> scaledVecOut,
-	ConstSmartPtr<TGridFunction> dimlessVecIn,
-	const std::vector<number>& scalingFactors
 );
 
 
@@ -183,6 +172,5 @@ void TestPositions(SmartPtr<TDomain> dom)
 } // namspace calciumDynamics
 } // namespace ug
 
-#include "nernst_planck_util_impl.h"
 
 #endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__NERNST_PLANCK_UTIL_H
