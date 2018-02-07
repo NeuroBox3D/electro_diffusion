@@ -34,6 +34,7 @@ set(SOURCES nernst_planck_plugin.cpp
             charge_marking.cpp
             intf_refMarkAdjuster.cpp
             extension_refMarkAdjuster.cpp
+            domain1d_solution_adjuster.cpp
             flux_exporter.cpp
             pnp_upwind.cpp
             morpho_gen.cpp
