@@ -11,7 +11,7 @@
 #include "lib_disc/function_spaces/grid_function.h"         // for GridFunction
 
 #include "charge_marking.h"                                 // for ChargeMarking
-#include "copy_neighbor_value_constraint.h"                 // for Domain1dSolutionAdjuster
+#include "domain1d_solution_adjuster.h"                     // for Domain1dSolutionAdjuster
 #include "edl_1d.h"                                         // for EDLSimulation
 #include "electric_circuit.h"                               // for ElectricCircuit
 #include "extension_refMarkAdjuster.h"                      // for ExtensionRefMarkAdjuster

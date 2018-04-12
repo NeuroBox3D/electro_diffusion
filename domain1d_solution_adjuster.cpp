@@ -29,9 +29,9 @@ template <typename TDomain, typename TAlgebra>
 void Domain1dSolutionAdjuster<TDomain, TAlgebra>::
 set_sorting_direction(const std::vector<number>& vDir)
 {
-	UG_COND_THROW(vDir.size() < TDomain::dim, "Given sorting direction does not have enough components.");
+	UG_COND_THROW(vDir.size() < (size_t) TDomain::dim, "Given sorting direction does not have enough components.");
 
-	for (size_t i = 0; i < worldDim; ++i)
+	for (size_t i = 0; i < (size_t) worldDim; ++i)
 		m_sortDir[i] = vDir[i];
 }
 
