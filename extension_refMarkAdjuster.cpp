@@ -42,10 +42,10 @@ ExtensionRefMarkAdjuster<TDomain>::ExtensionRefMarkAdjuster
 	UG_COND_THROW(m_si < 0, "Subset '" << useless << "' not found by subset handler.");
 
 	// convert direction to MathVector
-	UG_COND_THROW(dir.size() < worldDim,
+	UG_COND_THROW(dir.size() < (size_t) worldDim,
 		"Expected direction with at least " << worldDim << " (worldDim) components.")
 
-	for (size_t i = 0; i < worldDim; ++i)
+	for (size_t i = 0; i < (size_t) worldDim; ++i)
 		m_direction[i] = dir[i];
 
 	VecNormalize(m_direction, m_direction);
