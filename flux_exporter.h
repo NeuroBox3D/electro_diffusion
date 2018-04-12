@@ -19,9 +19,12 @@
 #include "common/types.h"                                                  // for number
 #include "common/math/math_vector_matrix/math_vector.h"                    // for MathVector
 #include "common/util/smart_pointer.h"                                     // for SmartPtr, Cons...
+#include "lib_algebra/cpu_algebra_types.h"                                 // for CPUAlgebra
 #include "lib_disc/common/function_group.h"                                // for FunctionGroup
 #include "lib_disc/common/local_algebra.h"                                 // for LocalVector
+#include "lib_disc/function_spaces/grid_function.h"                        // for GridFunction
 #include "lib_disc/local_finite_element/local_finite_element_id.h"         // for LFEID
+#include "lib_disc/spatial_disc/constraints/continuity_constraints/p1_continuity_constraints.h"  // for SymP1Constraint...
 #include "lib_grid/grid/grid_base_objects.h"                               // for GridObject (pt...
 #include "lib_grid/grid_objects/grid_dim_traits.h"                         // for grid_dim_traits
 #include "lib_grid/tools/subset_group.h"                                   // for SubsetGroup
@@ -51,14 +54,14 @@ class FluxExporter
 		typedef typename TGridFunction::const_element_iterator it_type;
 
 	public:
-		FluxExporter(SmartPtr<TGridFunction> u, std::string cmp_name_spec, std::string cmp_name_pot);
+		FluxExporter(SmartPtr<TGridFunction> u, const std::string& cmp_name_spec, const std::string& cmp_name_pot);
 		virtual ~FluxExporter() {};
 
 		void set_diff_const(number diff_const) {m_diffConst = diff_const;}
 		void set_conv_const(number conv_const) {m_convConst = conv_const;}
 		void set_quad_order(number quadOrder) {m_quadOrder = quadOrder;}
-		void set_hanging_constraint(SmartPtr<IConstraint<algebra_type> > constr) {m_hangingConstraint = constr;}
 		void set_upwind(SmartPtr<IConvectionShapes<dim> > shapes) {m_spConvShape = shapes;}
+		void set_hanging_constraint(SmartPtr<IDomainConstraint<dom_type, algebra_type> > constr);
 
 		void set_subsets(const std::vector<std::string>& vSubsets);
 		void set_subsets(const char* cSubsets);
@@ -119,8 +122,8 @@ class FluxExporter
 			AssembleWrapper
 			(
 				FluxExporter<TGridFunction>* _flEx,
-				SmartPtr<TGridFunction> _flux,
-				SmartPtr<TGridFunction> _vol,
+				SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > _flux,
+				SmartPtr<GridFunction<dom_type, CPUAlgebra> > _vol,
 				int _si
 			)
 			: flEx(_flEx), flux(_flux), vol(_vol), si(_si) {}
@@ -132,18 +135,27 @@ class FluxExporter
 			}
 
 			FluxExporter<TGridFunction>* flEx;
-			SmartPtr<TGridFunction> flux;
-			SmartPtr<TGridFunction> vol;
+			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux;
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol;
 			int si;
 		};
 		template <bool hanging, int order>
 		friend struct AssembleWrapper;
 
 		template <bool hanging, int order, typename TElem>
-		void assemble(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol, int si);
+		void assemble
+		(
+			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
+			int si
+		);
 
 		template <int order>
-		void assemble(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol);
+		void assemble
+		(
+			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
+		);
 
 
 		// PREP ELEM LOOP
@@ -243,16 +255,23 @@ class FluxExporter
 
 
 		template <typename TBaseElem>
-		void div_flux_by_vol_and_scale(SmartPtr<TGridFunction> flux, SmartPtr<TGridFunction> vol, number scale_factor);
+		void div_flux_by_vol_and_scale
+		(
+			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
+			number scale_factor
+		);
 
-		SmartPtr<TGridFunction> calc_flux(number scale_factor);
+
+		SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUBlockAlgebra<TGridFunction::domain_type::dim> > >
+		calc_flux(number scale_factor);
 
 	protected:
 		struct CmpCoords
 		{
 		    bool operator() (const MathVector<dim>& a, const MathVector<dim>& b) const
 		    {
-		    	for (size_t d = 0; d < dim; ++d)
+		    	for (size_t d = 0; d < (size_t) dim; ++d)
 		    	{
 		    		const number a_d = a[d];
 		    		const number b_d = b[d];
@@ -285,7 +304,9 @@ class FluxExporter
 		typedef std::map<MathVector<dim>, std::pair<MathVector<dim>, number>, CmpCoords> FluxMap;
 		FluxMap m_fluxMap;
 
-		SmartPtr<IConstraint<algebra_type> > m_hangingConstraint;
+		SmartPtr<IDomainConstraint<dom_type, CPUBlockAlgebra<dim> > > m_hangingConstraintFlux;
+		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintVol;
+
 		SmartPtr<IConvectionShapes<dim> > m_spConvShape;
 };
 

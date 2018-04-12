@@ -1,9 +1,11 @@
 /*
- * interface1d_fv_impl.h
+ * interface1d_fv.cpp
  *
  *  Created on: 06.06.2014
  *      Author: mbreit
  */
+
+#include "interface1d_fv.h"
 
 #include <utility>                                                               // for make_pair, pair
 
@@ -20,6 +22,7 @@
 #include "lib_disc/dof_manager/orientation.h"                                    // for ComputeOrientation...
 #include "lib_disc/local_finite_element/local_finite_element_id.h"               // for LFEID, LFEID::Spac...
 #include "lib_disc/spatial_disc/ass_tuner.h"                                     // for ConstraintType::CT...
+#include "lib_grid/algorithms/debug_util.h"                                      // for ElementDebugInfo
 #include "lib_grid/algorithms/element_side_util.h"                               // for GetOpposingSide
 #include "lib_grid/algorithms/geom_obj_util/vertex_util.h"                       // for GetVertexIndex
 #include "lib_grid/grid/grid.h"                                                  // for Grid::associated_e...
@@ -39,147 +42,6 @@ template <typename TVector> class VectorTimeSeries;
 
 
 namespace nernst_planck {
-
-
-#if 0
-template <typename TDomain, typename TAlgebra>
-Interface1D<TDomain, TAlgebra>::Interface1DMapper::Interface1DMapper(SmartPtr<IAssemble<TAlgebra> > ass)
-{
-	SmartPtr<AssemblingTuner<TAlgebra> > assTuner = ass->ass_tuner();
-	assTuner->set_mapping(this);
-}
-
-
-template <typename TDomain, typename TAlgebra>
-void Interface1D<TDomain, TAlgebra>::Interface1DMapper::add_local_vec_to_global
-(
-	vector_type& vec,
-	const LocalVector& lvec,
-	ConstSmartPtr<DoFDistribution> dd
-)
-{
-	const LocalIndices& lind = lvec.get_indices();
-
-	for (size_t fct = 0; fct < lind.num_fct(); fct++)
-	{
-		for (size_t dof = 0; dof < lind.num_dof(fct); dof++)
-		{
-			const size_t index = lind.index(fct,dof);
-			const size_t comp = lind.comp(fct,dof);
-
-			// find out whether index is constrained in any of the Interfaces associated
-			bool constr = false;
-			for (size_t intf = 0; intf < m_vspInterface.size(); intf++)
-			{
-				// is constrained in this interface
-				if (m_vspInterface[intf]->m_constrainerMap.find(index)
-					!= m_vspInterface[intf]->m_constrainerMap.end())
-				{
-					// get index for corresponding 1D interface node
-					if (m_vspInterface[intf]->m_fctIndexMapper.find(fct)
-						==  m_vspInterface[intf]->m_fctIndexMapper.end())
-					{
-						UG_THROW("Function " << fct << " for constrained index " << index
-								 << " is unknown in interface " << intf << ".\n");
-					}
-					size_t fctIndInIntf = m_vspInterface[intf]->m_fctIndexMapper[fct];
-					size_t intf_dofInd = m_vspInterface[intf]->m_algInd[1][fctIndInIntf];
-
-					// add to 1D interface index instead of constrained index
-					BlockRef(vec[intf_dofInd], comp) += lvec.value(fct,dof);
-
-					constr = true;
-					break;
-				}
-			}
-
-			// normal mapping and adding in case index is not constrained in any interface
-			if (!constr)
-				BlockRef(vec[index], comp) += lvec.value(fct,dof);
-		}
-	}
-}
-
-
-template <typename TDomain, typename TAlgebra>
-void Interface1D<TDomain, TAlgebra>::Interface1DMapper::add_local_mat_to_global
-(
-	matrix_type& mat,
-	const LocalMatrix& lmat,
-	ConstSmartPtr<DoFDistribution> dd
-)
-{
-	const LocalIndices& r_lind = lmat.get_row_indices();
-	const LocalIndices& c_lind = lmat.get_col_indices();
-
-	for (size_t rfct = 0; rfct < r_lind.num_fct(); rfct++)
-	{
-		for (size_t rdof = 0; rdof < r_lind.num_dof(rfct); rdof++)
-		{
-			const size_t r_index = r_lind.index(rfct,rdof);
-			const size_t r_comp = r_lind.comp(rfct,rdof);
-
-			// find out whether index is constrained in any of the Interfaces associated
-			bool constr = false;
-			for (size_t intf = 0; intf < m_vspInterface.size(); intf++)
-			{
-				// is constrained in this interface
-				if (m_vspInterface[intf]->m_constrainerMap.find(r_index)
-					!= m_vspInterface[intf]->m_constrainerMap.end())
-				{
-					// get index for corresponding 1D interface node
-					if (m_vspInterface[intf]->m_fctIndexMapper.find(rfct)
-						==  m_vspInterface[intf]->m_fctIndexMapper.end())
-						UG_THROW("Function for constrained index is unknown in interface.")
-
-					size_t fctIndInIntf = m_vspInterface[intf]->m_fctIndexMapper[rfct];
-					size_t intf_dofInd = m_vspInterface[intf]->m_algInd[1][fctIndInIntf];
-
-					for (size_t cfct = 0; cfct < c_lind.num_fct(); cfct++)
-					{
-						for (size_t cdof = 0; cdof < c_lind.num_dof(cfct); cdof++)
-						{
-							const size_t c_index = c_lind.index(cfct,cdof);
-							const size_t c_comp = c_lind.comp(cfct,cdof);
-
-							// add to 1D interface index instead of constrained index
-							BlockRef(mat(intf_dofInd, c_index), r_comp, c_comp) += lmat.value(rfct, rdof, cfct, cdof);
-						}
-					}
-
-					constr = true;
-					break;
-				}
-			}
-
-			// normal mapping and adding in case index is not constrained in any interface
-			if (!constr)
-			{
-				for (size_t cfct = 0; cfct < c_lind.num_fct(); cfct++)
-				{
-					for (size_t cdof = 0; cdof < c_lind.num_dof(cfct); cdof++)
-					{
-						const size_t c_index = c_lind.index(cfct,cdof);
-						const size_t c_comp = c_lind.comp(cfct,cdof);
-
-						// add to 1D interface index instead of constrained index
-						BlockRef(mat(r_index, c_index), r_comp, c_comp) += lmat.value(rfct, rdof, cfct, cdof);
-					}
-				}
-			}
-		}
-	}
-}
-
-
-
-template <typename TDomain, typename TAlgebra>
-void Interface1D<TDomain, TAlgebra>::Interface1DMapper::add_interface(SmartPtr<interface_type> intf)
-{
-	m_vspInterface.push_back(intf);
-}
-
-#endif
 
 
 template <typename TDomain, typename TAlgebra>
@@ -221,10 +83,10 @@ Interface1D<TDomain, TAlgebra>::Interface1D
 	m_ssiIntf[1] = std::string(one_dim_intfNode);
 
 	// store interface direction
-	UG_COND_THROW(dir.size() < worldDim, "Given direction vector does not have enough components "
+	UG_COND_THROW(dir.size() < (size_t) worldDim, "Given direction vector does not have enough components "
 				  " (" << dir.size() << " instead of " << worldDim <<").");
 
-	for (size_t i = 0; i < worldDim; ++i)
+	for (size_t i = 0; i < (size_t) worldDim; ++i)
 		m_direction[i] = dir[i];
 
 	VecNormalize(m_direction, m_direction);
@@ -382,7 +244,12 @@ void Interface1D<TDomain, TAlgebra>::update(ConstSmartPtr<DoFDistribution> dd)
 
 		// TODO: This might actually happen if interface node is on surface_rim/surface_shadow
 		if (++iter != dd->end<Vertex>(m_siIntf[0]))
-			{UG_THROW("More than one vertex in subset for high-dimensional interface node. This is not allowed!");}
+		{
+			UG_THROW("More than one vertex in subset for high-dimensional interface node "
+				"(subset " << m_siIntf[0] << "). This is not allowed!\n"
+				"First: " << ElementDebugInfo(*this->m_spApproxSpace->domain()->grid(), iv1) << "\b,\n"
+				<< "second: " << ElementDebugInfo(*this->m_spApproxSpace->domain()->grid(), *iter) << "\b.");
+		}
 	}
 
 	iter = dd->begin<Vertex>(m_siIntf[1]);
@@ -390,11 +257,13 @@ void Interface1D<TDomain, TAlgebra>::update(ConstSmartPtr<DoFDistribution> dd)
 	{
 #ifndef UG_PARALLEL
 		if (isSurfDD)
-			UG_THROW("No vertex in subset for one-dimensional interface node. This is not allowed!");
+			UG_THROW("More than one vertex in subset for one-dimensional interface node "
+				"(subset " << m_siIntf[1] << "). This is not allowed!");
 #else
 		if (isSurfDD && pcl::NumProcs() <= 1)
 		{
-			UG_THROW("No vertex in subset for one-dimensional interface node. This is not allowed!");
+			UG_THROW("More than one vertex in subset for one-dimensional interface node "
+				"(subset " << m_siIntf[1] << "). This is not allowed!");
 		}
 		// else do nothing
 #endif
@@ -421,8 +290,8 @@ void Interface1D<TDomain, TAlgebra>::update(ConstSmartPtr<DoFDistribution> dd)
 	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
 
 	// get algebra indices
-	cInfo.algInd[0].clear();
-	cInfo.algInd[1].clear();
+	cInfo.dofInd[0].clear();
+	cInfo.dofInd[1].clear();
 	if (iv1 != NULL && iv2 != NULL)
 	{
 		// get subset handler
@@ -438,33 +307,33 @@ void Interface1D<TDomain, TAlgebra>::update(ConstSmartPtr<DoFDistribution> dd)
 		int ssi1 = ssh->get_subset_index(iv1);
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
 		{
-			std::vector<size_t> ind1;
+			std::vector<DoFIndex> ind1;
 
 			if (!dd->is_def_in_subset(m_vFct[fct], ssi1))
 			{
 				UG_THROW("Function " << m_vFct[fct] << "is not defined on interface node on the high-dimensional side!");
 			}
-			dd->inner_algebra_indices_for_fct(iv1, ind1, false, m_vFct[fct]);
+			dd->inner_dof_indices(iv1, m_vFct[fct], ind1, false);
 
 			UG_ASSERT(ind1.size() == 1, "More (or less) than one function index found on a vertex!");
 
-			cInfo.algInd[0].push_back(ind1[0]);
+			cInfo.dofInd[0].push_back(ind1[0]);
 		}
 
 		int ssi2 = ssh->get_subset_index(iv2);
 		for (size_t fct = 0; fct < m_vFct.size(); fct++)
 		{
-			std::vector<size_t> ind2;
+			std::vector<DoFIndex> ind2;
 
 			if (!dd->is_def_in_subset(m_vFct[fct], ssi2))
 			{
 				UG_THROW("Function " << m_vFct[fct] << "is not defined on interface node on the one-dimensional side!");
 			}
-			dd->inner_algebra_indices_for_fct(iv2, ind2, false, m_vFct[fct]);
+			dd->inner_dof_indices(iv2, m_vFct[fct], ind2, false);
 
 			UG_ASSERT(ind2.size() == 1, "More (or less) than one function index found on a vertex!");
 
-			cInfo.algInd[1].push_back(ind2[0]);
+			cInfo.dofInd[1].push_back(ind2[0]);
 		}
 	}
 
@@ -750,7 +619,7 @@ void Interface1D<TDomain, TAlgebra>::fill_constrainer_map(ConstSmartPtr<DoFDistr
 	SmartPtr<MultiGrid> mg = this->m_spApproxSpace->domain()->grid();
 
 	// the constrainer map for this dd
-	std::map<size_t, ConstrainerInfo>& constrainerMap = m_mConstraints[dd.get()].constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap = m_mConstraints[dd.get()].constrainerMap;
 
 	// loop constrained elements
 	typename DoFDistribution::traits<TElem>::const_iterator iter, iterEnd;
@@ -898,18 +767,18 @@ void Interface1D<TDomain, TAlgebra>::fill_constrainer_map(ConstSmartPtr<DoFDistr
 
 				for (size_t i = 0; i < n_ind; ++i)
 				{
-					UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
-					UG_ASSERT(!constrgInd[orientationOffsets[i]][1], "Block matrices are not supported (yet)!");
-					constrainerMap[constrdInd[i][0]] = ConstrainerInfo(constrgInd[orientationOffsets[i]][0], constrg->is_constrained(), fct);
+					//UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
+					//UG_ASSERT(!constrgInd[orientationOffsets[i]][1], "Block matrices are not supported (yet)!");
+					constrainerMap[constrdInd[i]] = ConstrainerInfo(constrgInd[orientationOffsets[i]], constrg->is_constrained(), fct);
 				}
 			}
 			else
 			{
 				for (size_t i = 0; i < n_ind; ++i)
 				{
-					UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
-					UG_ASSERT(!constrgInd[i][1], "Block matrices are not supported (yet)!");
-					constrainerMap[constrdInd[i][0]] = ConstrainerInfo(constrgInd[i][0], constrg->is_constrained(), fct);
+					//UG_ASSERT(!constrdInd[i][1], "Block matrices are not supported (yet)!");
+					//UG_ASSERT(!constrgInd[i][1], "Block matrices are not supported (yet)!");
+					constrainerMap[constrdInd[i]] = ConstrainerInfo(constrgInd[i], constrg->is_constrained(), fct);
 				}
 			}
 		}
@@ -923,7 +792,7 @@ void Interface1D<TDomain, TAlgebra>::fill_constrainer_map(ConstSmartPtr<DoFDistr
 {
 	// clear current constrainer map
 	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
 
 	constrainerMap.clear();
 
@@ -961,7 +830,8 @@ void Interface1D<TDomain, TAlgebra>::fill_constrainer_map(ConstSmartPtr<DoFDistr
 
 template <typename TDomain, typename TAlgebra>
 void Interface1D<TDomain, TAlgebra>::adjust_jacobian
-(	matrix_type& J,
+(
+	matrix_type& J,
 	const vector_type& u,
 	ConstSmartPtr<DoFDistribution> dd,
 	int type,
@@ -987,7 +857,7 @@ outFile.close();
 */
 
 	typedef typename matrix_type::row_iterator row_iterator;
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt;
+	typename std::map<DoFIndex, ConstrainerInfo>::const_iterator constrainerMapIt;
 
 	// whether we are dealing with a surface dof distro
 	bool isSurf = dd->grid_level().is_surface();
@@ -996,8 +866,8 @@ outFile.close();
 	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::iterator CIIter;
 	CIIter ciit = m_mConstraints.find(dd.get());
 	if (ciit == m_mConstraints.end()) update(dd);
-	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
+	const ConstraintInfo& cInfo = m_mConstraints[dd.get()];
+	const std::map<DoFIndex, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
 
 	// loop rows
 	size_t nr = J.num_rows();
@@ -1006,61 +876,72 @@ outFile.close();
 		// adapt current row if it depends on any constrained value
 
 		// loop existing column entries of row
-		std::vector<typename std::pair<size_t, ConstrainerInfo> > colIndices;
+		std::vector<typename std::pair<DoFIndex, ConstrainerInfo> > colIndices;
 		for (row_iterator rit = J.begin_row(i); rit != J.end_row(i); ++rit)
 		{
-			// if a column index is part of the constrained set, then adjust row
-			constrainerMapIt = constrainerMap.find(rit.index());
+			const typename matrix_type::value_type& block = rit.value();
 
-			if (constrainerMapIt != constrainerMap.end())
+			const size_t nbc = GetCols(block);
+
+			// loop columns of block
+			for (size_t blockCol = 0; blockCol < nbc; ++blockCol)
 			{
-				// store constrained col index until row_iterator reaches end
-				// do that only if constrainer is not hanging and type is CT_CONSTRAINTS
-				// OR if constrainer is hanging and type is CT_MAY_DEPEND_ON_HANGING
-				if ((!constrainerMapIt->second.constrainerIsHanging && type == CT_CONSTRAINTS)
-					|| (constrainerMapIt->second.constrainerIsHanging && type == CT_MAY_DEPEND_ON_HANGING))
-					colIndices.push_back(std::make_pair(rit.index(), constrainerMapIt->second));
+				const DoFIndex colDI(rit.index(), blockCol);
+
+				// if a column index is part of the constrained set, then adjust row
+				constrainerMapIt = constrainerMap.find(colDI);
+				if (constrainerMapIt != constrainerMap.end())
+				{
+					// store constrained col index until row_iterator reaches end
+					// do that only if constrainer is not hanging and type is CT_CONSTRAINTS
+					// OR if constrainer is hanging and type is CT_MAY_DEPEND_ON_HANGING
+					if ((!constrainerMapIt->second.constrainerIsHanging && type == CT_CONSTRAINTS)
+						|| (constrainerMapIt->second.constrainerIsHanging && type == CT_MAY_DEPEND_ON_HANGING))
+						colIndices.push_back(std::make_pair(colDI, constrainerMapIt->second));
+				}
 			}
 		}
 
 		// go through row entries again and adapt for constraints
 		for (size_t col = 0; col < colIndices.size(); col++)
 		{
-			size_t constrdInd = colIndices[col].first;
-			size_t constrgInd = colIndices[col].second.constrgInd;
+			const DoFIndex& constrdInd = colIndices[col].first;
+			const DoFIndex& constrgInd = colIndices[col].second.constrgInd;
 			size_t fct = colIndices[col].second.fct;
 
 			// interface nodes might not be present in level dof distro
-			if (cInfo.algInd[0].size() < fct+1 || cInfo.algInd[1].size() < fct+1)
+			if (cInfo.dofInd[0].size() < fct+1 || cInfo.dofInd[1].size() < fct+1)
 			{
 				if (isSurf) UG_THROW("Interface node indices not present in surface dof distro.");
 
 				// for level dof distros, only adapt constrained dof and constrainer
 				// TODO: only works for linear constraints!
 				// get defect derivatives for this vertex
-				typename vector_type::value_type defDeriv[3];
+				number defDeriv[3];
 				constraintValueDerivs(defDeriv, 1, 1, 1);
 
 				// deriv wrt constraining
-				if (J.has_connection(i, constrgInd))
-					J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
-				else
-				{
-					typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[0];
-					J(i, constrgInd) = help;
-				}
+				if (!J.has_connection(i, constrgInd[0]))
+					J(i, constrgInd[0]) = 0.0;
+
+				typename matrix_type::value_type& constrgBlock = J(i, constrgInd[0]);
+				typename matrix_type::value_type& constrdBlock = J(i, constrdInd[0]);
+				const size_t nbr = GetRows(constrgBlock);
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(constrgBlock, blockRow, constrgInd[1]) += BlockRef(constrdBlock, blockRow, constrdInd[1]) * defDeriv[0];
 
 				// deriv wrt constrained vertex
-				J(i, constrdInd) = 0.0;
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(constrdBlock, blockRow, constrdInd[1]) = 0.0;
 			}
 			else
 			{
-				size_t IntfNodeHdInd = cInfo.algInd[0][fct];
-				size_t IntfNode1dInd = cInfo.algInd[1][fct];
+				const DoFIndex& IntfNodeHdInd = cInfo.dofInd[0][fct];
+				const DoFIndex& IntfNode1dInd = cInfo.dofInd[1][fct];
 
 				// get defect derivatives for this vertex
-				typename vector_type::value_type defDeriv[3];
-				constraintValueDerivs(defDeriv, u[constrgInd], u[IntfNodeHdInd], u[IntfNode1dInd]);
+				number defDeriv[3];
+				constraintValueDerivs(defDeriv, DoFRef(u, constrgInd), DoFRef(u, IntfNodeHdInd), DoFRef(u, IntfNode1dInd));
 
 				// NOTE: "If a side effect on a scalar object is unsequenced relative to either
 				//       another side effect on the same scalar object or a value computation using
@@ -1080,83 +961,104 @@ outFile.close();
 				//       We therefore need to take extra caution:
 
 				// deriv wrt constraining
-				if (J.has_connection(i, constrgInd))
-					J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
-				else
-				{
-					typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[0];
-					J(i, constrgInd) = help;
-				}
-
+				if (!J.has_connection(i, constrgInd[0]))
+					J(i, constrgInd[0]) = 0.0;
+				
+				typename matrix_type::value_type* constrdBlock = &J(i, constrdInd[0]);
+				typename matrix_type::value_type& constrgBlock = J(i, constrgInd[0]);
+				const size_t nbr = GetRows(constrgBlock);
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(constrgBlock, blockRow, constrgInd[1]) += BlockRef(*constrdBlock, blockRow, constrdInd[1]) * defDeriv[0];
+				
+				
 				// deriv wrt interface vertex on constraining side
-				if (J.has_connection(i, IntfNodeHdInd))
-					J(i, IntfNodeHdInd) += J(i, constrdInd) * defDeriv[1];
-				else
-				{
-					typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[1];
-					J(i, IntfNodeHdInd) = help;
-				}
-
+				if (!J.has_connection(i, IntfNodeHdInd[0]))
+					J(i, IntfNodeHdInd[0]) = 0.0;
+				
+				constrdBlock = &J(i, constrdInd[0]); // location may have changed due to resizing!
+				typename matrix_type::value_type& intfNodeHdBlock = J(i, IntfNodeHdInd[0]);
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(intfNodeHdBlock, blockRow, IntfNodeHdInd[1]) += BlockRef(*constrdBlock, blockRow, constrdInd[1]) * defDeriv[1];
+				
+				
 				// deriv wrt interface vertex on constrained side
-				if (J.has_connection(i, IntfNode1dInd))
-					J(i, IntfNode1dInd) += J(i, constrdInd) * defDeriv[2];
-				else
-				{
-					typename matrix_type::value_type help = J(i, constrdInd) * defDeriv[2];
-					J(i, IntfNode1dInd) = help;
-				}
+				if (!J.has_connection(i, IntfNode1dInd[0]))
+					J(i, IntfNode1dInd[0]) = 0.0;
+
+				constrdBlock = &J(i, constrdInd[0]); // reference may have changed due to resizing!
+				typename matrix_type::value_type& intfNode1dBlock = J(i, IntfNode1dInd[0]);
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(intfNode1dBlock, blockRow, IntfNode1dInd[1]) += BlockRef(*constrdBlock, blockRow, constrdInd[1]) * defDeriv[2];
+
 
 				// deriv wrt constrained vertex
-				J(i, constrdInd) = 0.0;
+				for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
+					BlockRef(*constrdBlock, blockRow, constrdInd[1]) = 0.0;
 			}
 		}
 
 		// Now, if the current row belongs to a constrained DoF itself,
 		// then we need to add it to its 1d interface DoF and write an identity row instead.
-		constrainerMapIt = constrainerMap.find(i);
-		if (constrainerMapIt != constrainerMap.end()
-			&& ((!constrainerMapIt->second.constrainerIsHanging && type == CT_CONSTRAINTS)
-					|| (constrainerMapIt->second.constrainerIsHanging && type == CT_MAY_DEPEND_ON_HANGING)))
+
+		// loop block rows
+		const size_t nbr = GetRows(J(i,i));
+		for (size_t blockRow = 0; blockRow < nbr; ++blockRow)
 		{
-			size_t fct = constrainerMapIt->second.fct;
-
-			// on level dof distros, the intf node might not be present
-			size_t IntfNode1dInd = (size_t) -1;
-			if (cInfo.algInd[1].size() >= fct+1)
-				IntfNode1dInd = cInfo.algInd[1][fct];
-
-			// we put curly brackets around this so that the row_iterator will be removed afterwards
-			// otherwise, we get a negative assert from the matrix implementation
+			const DoFIndex constrdInd = DoFIndex(i, blockRow);
+			constrainerMapIt = constrainerMap.find(constrdInd);
+			if (constrainerMapIt != constrainerMap.end()
+				&& ((!constrainerMapIt->second.constrainerIsHanging && type == CT_CONSTRAINTS)
+						|| (constrainerMapIt->second.constrainerIsHanging && type == CT_MAY_DEPEND_ON_HANGING)))
 			{
-				const row_iterator iterEnd = J.end_row(i);
-				for (row_iterator conn = J.begin_row(i); conn != iterEnd; ++conn)
+				size_t fct = constrainerMapIt->second.fct;
+
+				// on level dof distros, the intf node might not be present
+				DoFIndex IntfNode1dInd((size_t) -1, (size_t) -1);
+				if (cInfo.dofInd[1].size() >= fct+1)
+					IntfNode1dInd = cInfo.dofInd[1][fct];
+
+				// we put curly brackets around this so that the row_iterator will be removed afterwards
+				// otherwise, we get a negative assert from the matrix implementation
 				{
-					// only add to intf node row if it is present
-					if (IntfNode1dInd != (size_t) -1)
-						J(IntfNode1dInd, conn.index()) += conn.value();
+					const row_iterator iterEnd = J.end_row(i);
+					for (row_iterator conn = J.begin_row(i); conn != iterEnd; ++conn)
+					{
+						const size_t nc = GetCols(conn.value());
 
-					// in any case, delete constrained row
-					conn.value() = 0.0;
+						// only add to intf node row if it is present
+						if (IntfNode1dInd != DoFIndex((size_t) -1, (size_t) -1))
+						{
+							if (!J.has_connection(IntfNode1dInd[0], conn.index()))
+								J(IntfNode1dInd[0], conn.index()) = 0.0;
+
+							for (size_t blockCol = 0; blockCol < nc; ++blockCol)
+								DoFRef(J, IntfNode1dInd, DoFIndex(conn.index(), blockCol)) += BlockRef(conn.value(), blockRow, blockCol);
+						}
+
+						// in any case, delete constrained row
+						for (size_t blockCol = 0; blockCol < nc; ++blockCol)
+							BlockRef(conn.value(), blockRow, blockCol) = 0.0;
+					}
 				}
-			}
 
-			// set unit diagonal
-			J(i, i)	= 1.0;
+				// set unit diagonal
+				DoFRef(J, constrdInd, constrdInd) = 1.0;
 
 #if 0 // NO! The constrained DoF is no real DoF; its value is determined by adjust_solution()!
-			ConstrainerInfo ci = constrainerMapIt->second;
-			size_t constrgInd = ci.constrgInd;
-			size_t fct = ci.fct;
-			size_t IntfNodeHdInd = cInfo.algInd[0][fct];
-			size_t IntfNode1dInd = cInfo.algInd[1][fct];
+				ConstrainerInfo ci = constrainerMapIt->second;
+				size_t constrgInd = ci.constrgInd;
+				size_t fct = ci.fct;
+				size_t IntfNodeHdInd = cInfo.dofInd[0][fct];
+				size_t IntfNode1dInd = cInfo.dofInd[1][fct];
 
-			typename vector_type::value_type defDeriv[3];
-			constraintValueDerivs(defDeriv, u[constrgInd], u[IntfNodeHdInd], u[IntfNode1dInd]);
+				number defDeriv[3];
+				constraintValueDerivs(defDeriv, u[constrgInd], u[IntfNodeHdInd], u[IntfNode1dInd]);
 
-			J(i, constrgInd) = -defDeriv[0];
-			J(i, IntfNodeHdInd) = -defDeriv[1];
-			J(i, IntfNode1dInd) = -defDeriv[2];
+				J(i, constrgInd) = -defDeriv[0];
+				J(i, IntfNodeHdInd) = -defDeriv[1];
+				J(i, IntfNode1dInd) = -defDeriv[2];
 #endif
+			}
 		}
 	}
 }
@@ -1180,11 +1082,11 @@ void Interface1D<TDomain, TAlgebra>::adjust_defect
 	CIIter ciit = m_mConstraints.find(dd.get());
 	if (ciit == m_mConstraints.end()) update(dd);
 	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
 
 	// loop constrained vertices
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
 	for (; constrainerMapIt != constrainerMapEnd; ++constrainerMapIt)
 	{
 		// only once for each constraint type
@@ -1193,14 +1095,14 @@ void Interface1D<TDomain, TAlgebra>::adjust_defect
 			continue;
 
 		// add defect to 1d interface node; then set 0
-		size_t index = constrainerMapIt->first;
+		const DoFIndex& index = constrainerMapIt->first;
 		size_t fct = constrainerMapIt->second.fct;
 
-		UG_COND_THROW(cInfo.algInd[1].size() < fct+1, "Index for 1d interface node not present.");
-		size_t IntfNode1dInd = cInfo.algInd[1][fct];
+		UG_COND_THROW(cInfo.dofInd[1].size() < fct+1, "Index for 1d interface node not present.");
+		const DoFIndex& IntfNode1dInd = cInfo.dofInd[1][fct];
 
-		d[IntfNode1dInd] += d[index];
-		d[index] = 0.0;
+		DoFRef(d, IntfNode1dInd) += DoFRef(d, index);
+		DoFRef(d, index) = 0.0;
 	}
 }
 
@@ -1259,11 +1161,11 @@ void Interface1D<TDomain, TAlgebra>::adjust_solution
 	CIIter ciit = m_mConstraints.find(dd.get());
 	if (ciit == m_mConstraints.end()) update(dd);
 	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
 
 	// loop constrained vertices
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
 	for (; constrainerMapIt != constrainerMapEnd; ++constrainerMapIt)
 	{
 		// only once for each constraint type
@@ -1271,12 +1173,12 @@ void Interface1D<TDomain, TAlgebra>::adjust_solution
 			|| (!constrainerMapIt->second.constrainerIsHanging && type != CT_CONSTRAINTS))
 			continue;
 
-		size_t constrdInd = constrainerMapIt->first;
-		size_t constrgInd = constrainerMapIt->second.constrgInd;
+		const DoFIndex& constrdInd = constrainerMapIt->first;
+		const DoFIndex& constrgInd = constrainerMapIt->second.constrgInd;
 		size_t fct = constrainerMapIt->second.fct;
 
 		// interface nodes might not be present in level dof distro
-		if (cInfo.algInd[0].size() < fct+1 || cInfo.algInd[1].size() < fct+1)
+		if (cInfo.dofInd[0].size() < fct+1 || cInfo.dofInd[1].size() < fct+1)
 		{
 			if (isSurf)
 				{UG_THROW("Interface node indices not present in surface dof distro.");}
@@ -1285,10 +1187,10 @@ void Interface1D<TDomain, TAlgebra>::adjust_solution
 		}
 		else
 		{
-			size_t intfSideInd = cInfo.algInd[0][fct];
-			size_t intfCSideInd = cInfo.algInd[1][fct];
+			const DoFIndex& intfSideInd = cInfo.dofInd[0][fct];
+			const DoFIndex& intfCSideInd = cInfo.dofInd[1][fct];
 
-			constraintValue(u[constrdInd], u[constrgInd], u[intfSideInd], u[intfCSideInd]);
+			constraintValue(DoFRef(u, constrdInd), DoFRef(u, constrgInd), DoFRef(u, intfSideInd), DoFRef(u, intfCSideInd));
 		}
 	}
 }
@@ -1308,11 +1210,11 @@ void Interface1D<TDomain, TAlgebra>::adjust_correction
 	CIIter ciit = m_mConstraints.find(dd.get());
 	if (ciit == m_mConstraints.end()) update(dd);
 	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
 
 	// loop constrained vertices
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
 	for (; constrainerMapIt != constrainerMapEnd; ++constrainerMapIt)
 	{
 		// only once for each constraint type
@@ -1321,8 +1223,8 @@ void Interface1D<TDomain, TAlgebra>::adjust_correction
 			continue;
 
 		// set to 0
-		size_t index = constrainerMapIt->first;
-		u[index] = 0.0;
+		const DoFIndex& index = constrainerMapIt->first;
+		DoFRef(u, index) = 0.0;
 	}
 }
 
@@ -1378,11 +1280,11 @@ void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 	CIIter ciit = m_mConstraints.find(ddFine.get());
 	if (ciit == m_mConstraints.end()) update(ddFine);
 	ConstraintInfo& cInfo_f = m_mConstraints[ddFine.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap_f = cInfo_f.constrainerMap;
+	std::map<DoFIndex, ConstrainerInfo>& constrainerMap_f = cInfo_f.constrainerMap;
 
 	// set prolongation for fine constrained nodes to 0.0
-	typename std::map<size_t, ConstrainerInfo>::iterator it = constrainerMap_f.begin();
-	typename std::map<size_t, ConstrainerInfo>::iterator it_end = constrainerMap_f.end();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator it = constrainerMap_f.begin();
+	typename std::map<DoFIndex, ConstrainerInfo>::iterator it_end = constrainerMap_f.end();
 	for (; it != it_end; ++it)
 		SetRow(P, it->first, 0.0);
 
@@ -1458,7 +1360,7 @@ void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 			}
 
 			// get defect derivatives for this vertex
-			typename vector_type::value_type defDeriv[3];
+			number defDeriv[3];
 			// FIXME: This will only work if constraints are linear and add up to one.
 			constraintValueDerivs(defDeriv, 1, 1, 1);
 
@@ -1596,6 +1498,35 @@ void Interface1D<TDomain, TAlgebra>::adjust_restriction
 	}
 */
 }
+
+
+
+
+// explicit template specializations
+#ifdef UG_CPU_1
+	#ifdef UG_DIM_1
+		template class Interface1D<Domain1d, CPUAlgebra>;
+	#endif
+	#ifdef UG_DIM_2
+		template class Interface1D<Domain2d, CPUAlgebra>;
+	#endif
+	#ifdef UG_DIM_3
+		template class Interface1D<Domain3d, CPUAlgebra>;
+	#endif
+#endif
+#ifdef UG_CPU_5
+	#ifdef UG_DIM_1
+		template class Interface1D<Domain1d, CPUBlockAlgebra<5> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class Interface1D<Domain2d, CPUBlockAlgebra<5> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class Interface1D<Domain3d, CPUBlockAlgebra<5> >;
+	#endif
+#endif
+
+
 
 } // namespace nernst_planck
 } // namespace ug

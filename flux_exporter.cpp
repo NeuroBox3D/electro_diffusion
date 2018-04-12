@@ -14,7 +14,6 @@
 #include "common/error.h"                                            // for UG_COND_...
 #include "common/math/math_vector_matrix/math_matrix.h"              // for MathMatrix
 #include "common/math/math_vector_matrix/math_vector_functions.h"    // for VecScale...
-#include "lib_algebra/cpu_algebra_types.h"                           // for CPUAlgebra
 #include "lib_algebra/parallelization/parallel_storage_type.h"       // for Parallel...
 #include "lib_disc/common/groups_util.h"                             // for CreateFunctionIndexMapping...
 #include "lib_disc/common/multi_index.h"                             // for DoFIndex
@@ -24,7 +23,6 @@
 #include "lib_disc/domain_util.h"                                    // for FillCornerCoordinates
 #include "lib_disc/function_spaces/approximation_space.h"            // for ApproximationSpace
 #include "lib_disc/function_spaces/dof_position_util.h"              // for DoFPosition
-#include "lib_disc/function_spaces/grid_function.h"                  // for GridFunction
 #include "lib_disc/spatial_disc/ass_tuner.h"                         // for ConstraintType...
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"  // for IConstraint
 #include "lib_disc/spatial_disc/disc_util/conv_shape.h"              // for Convecti...
@@ -41,7 +39,7 @@
 #endif
 
 #include "vtk_export_ho.h"                                           // for vtk_export_ho
-
+#include "choose_fvgeom.h"
 
 namespace ug {
 
@@ -59,8 +57,8 @@ template <typename TGridFunction>
 FluxExporter<TGridFunction>::FluxExporter
 (
 	SmartPtr<TGridFunction> u,
-	std::string cmp_name_spec,
-	std::string cmp_name_pot
+	const std::string& cmp_name_spec,
+	const std::string& cmp_name_pot
 
 )
 : m_u(u),
@@ -68,7 +66,8 @@ FluxExporter<TGridFunction>::FluxExporter
   m_convConst(std::numeric_limits<number>::quiet_NaN()),
   m_quadOrder(-1),
   m_bWriteFluxMap(false),
-  m_hangingConstraint(SPNULL),
+  m_hangingConstraintFlux(SPNULL),
+  m_hangingConstraintVol(SPNULL),
   m_spConvShape(new ConvectionShapesNoUpwind<dim>)
 {
 	// set subset handler
@@ -100,6 +99,32 @@ FluxExporter<TGridFunction>::FluxExporter
 	UG_COND_THROW(m_u->lfeid(m_cmpPot).type() != m_lfeid.type(),
 			"Potential function does not have the same type as species function ("
 			<< m_u->lfeid(m_cmpPot).type() << " / " << m_lfeid.type() << ")");
+}
+
+
+template <typename TGridFunction>
+void FluxExporter<TGridFunction>::set_hanging_constraint(SmartPtr<IDomainConstraint<dom_type, algebra_type> > constr)
+{
+	typedef OneSideP1Constraints<dom_type, algebra_type> AsymHC;
+	AsymHC* hca = dynamic_cast<AsymHC*>(constr.get());
+	if (hca)
+	{
+		m_hangingConstraintFlux = make_sp(new OneSideP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
+		m_hangingConstraintVol = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
+		return;
+	}
+
+	typedef SymP1Constraints<dom_type, algebra_type> SymHC;
+	SymHC* hcs = dynamic_cast<SymHC*>(constr.get());
+	if (hcs)
+	{
+		m_hangingConstraintFlux = make_sp(new SymP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
+		m_hangingConstraintVol = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
+		return;
+	}
+
+	UG_THROW("Only instances of SymP1Constraints or OneSideP1Constraints are allowed as hanging constraint,\n"
+		"but given constraint is of neither type.");
 }
 
 
@@ -215,7 +240,7 @@ void FluxExporter<TGridFunction>::write_flux
 	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
 
 	// calculate flux as vector-valued grid function
-	SmartPtr<TGridFunction> flux = calc_flux(scale_factor);
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux = calc_flux(scale_factor);
 
 	// export to vtk
 	std::vector<std::string> flux_cmp_names(dim);
@@ -225,7 +250,8 @@ void FluxExporter<TGridFunction>::write_flux
 	vtkOutput->clear_selection();
 	vtkOutput->select(flux_cmp_names, fluxName.c_str());
 
-	vtk_export_ho<TGridFunction, dim>(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);
+	vtk_export_ho<GridFunction<dom_type, CPUBlockAlgebra<dim> >, dim>
+		(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);
 
 	//size_t sgSz = m_sg.size();
 	//for (size_t s = 0; s < sgSz; ++s)
@@ -297,9 +323,9 @@ void FluxExporter<TGridFunction>::write_box_fluxes
 			const MathVector<dim>& coords = it->first;
 			const MathVector<dim>& fluxVec = (it->second).first;
 			const number area = (it->second).second;
-			for (size_t d = 0; d < dim; ++d)
+			for (size_t d = 0; d < (size_t) dim; ++d)
 				outFile << coords[d] << ", ";
-			for (size_t d = 0; d < dim-1; ++d)
+			for (size_t d = 0; d < (size_t) dim-1; ++d)
 				outFile << fluxVec[d] / area << ", ";
 			outFile << fluxVec[dim-1] / area << std::endl;
 		}
@@ -518,7 +544,7 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::as
 		const typename TFV1Geom<TElem, dim>::SCV& scvTo = geo.scv(to);
 
 		VecScaleAdd(grad, 0.5, scvTo.global_ip(), -0.5, scvFrom.global_ip());
-		for (size_t i = 0; i < dim; ++i)
+		for (size_t i = 0; i < (size_t) dim; ++i)
 		{
 			f(i, from) += scalarFluxIP * grad[i];
 			f(i, to) += scalarFluxIP * grad[i];
@@ -590,83 +616,12 @@ FluxExporter<TGridFunction>::assemble_vol_elem<TFV1Geom<TElem, dim>, Dummy>::ass
 
 
 
-
-// Choose FVGeom as in ConvectionDiffusionFV.
-
-// standard FVGeom
-template <int dim, typename TElem, bool hanging, int order, int quadOrder = order+1>
-struct ChooseProperFVGeom
-{
-	typedef DimFVGeometry<dim> FVGeom;
-};
-
-// for order 1 and !hanging: use FV1Geom
-template <int dim, typename TElem, int quadOrder>
-struct ChooseProperFVGeom<dim, TElem, false, 1, quadOrder>
-{
-	typedef FV1Geometry<TElem, dim> FVGeom;
-};
-
-// for order 1 and hanging: use HFV1Geom
-template <int dim, typename TElem, int quadOrder>
-struct ChooseProperFVGeom<dim, TElem, true, 1, quadOrder>
-{
-	typedef HFV1Geometry<TElem, dim> FVGeom;
-};
-
-// take FVGeom instead if dim > 1 and 1 < order < 4 and quadOrder == order+1
-template <typename TElem, bool hanging>
-struct ChooseProperFVGeom<2, TElem, hanging, 2>
-{
-	typedef FVGeometry<2, TElem, 2> FVGeom;
-};
-template <typename TElem, bool hanging>
-struct ChooseProperFVGeom<2, TElem, hanging, 3>
-{
-	typedef FVGeometry<3, TElem, 2> FVGeom;
-};
-template <typename TElem, bool hanging>
-struct ChooseProperFVGeom<3, TElem, hanging, 2>
-{
-	typedef FVGeometry<2, TElem, 3> FVGeom;
-};
-template <typename TElem, bool hanging>
-struct ChooseProperFVGeom<3, TElem, hanging, 3>
-{
-	typedef FVGeometry<3, TElem, 3> FVGeom;
-};
-
-// take DimFVGeometry again instead if dim == 3 and TElem == Pyramid, Octahedron
-template <bool hanging>
-struct ChooseProperFVGeom<3, Pyramid, hanging, 2>
-{
-	typedef DimFVGeometry<3> FVGeom;
-};
-template <bool hanging>
-struct ChooseProperFVGeom<3, Pyramid, hanging, 3>
-{
-	typedef DimFVGeometry<3> FVGeom;
-};
-template <bool hanging>
-struct ChooseProperFVGeom<3, Octahedron, hanging, 2>
-{
-	typedef DimFVGeometry<3> FVGeom;
-};
-template <bool hanging>
-struct ChooseProperFVGeom<3, Octahedron, hanging, 3>
-{
-	typedef DimFVGeometry<3> FVGeom;
-};
-
-
-
-
 template <typename TGridFunction>
 template <bool hanging, int order, typename TElem>
 void FluxExporter<TGridFunction>::assemble
 (
-	SmartPtr<TGridFunction> flux,
-	SmartPtr<TGridFunction> vol,
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 	int si
 )
 {
@@ -768,8 +723,8 @@ template <typename TGridFunction>
 template <int order>
 void FluxExporter<TGridFunction>::assemble
 (
-	SmartPtr<TGridFunction> flux,
-	SmartPtr<TGridFunction> vol
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
 )
 {
 	typedef typename TGridFunction::domain_type dom_type;
@@ -813,8 +768,8 @@ template <typename TGridFunction>
 template <typename TBaseElem>
 void FluxExporter<TGridFunction>::div_flux_by_vol_and_scale
 (
-	SmartPtr<TGridFunction> flux,
-	SmartPtr<TGridFunction> vol,
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 	number scale_factor
 )
 {
@@ -891,11 +846,12 @@ void FluxExporter<TGridFunction>::add_side_subsets
 }
 
 template <typename TGridFunction>
-SmartPtr<TGridFunction> FluxExporter<TGridFunction>::calc_flux(number scale_factor)
+SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUBlockAlgebra<TGridFunction::domain_type::dim> > >
+FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 {
 	// set up approx space with flux function of the same order as solution grid function
 	SmartPtr<ApproximationSpace<dom_type> > approxFlux =
-		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain()));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 3)));
 
 	std::vector<std::string> flux_cmp_names(dim);
 	if (dim >= 1) flux_cmp_names[0] = std::string("flux_x");
@@ -908,17 +864,19 @@ SmartPtr<TGridFunction> FluxExporter<TGridFunction>::calc_flux(number scale_fact
 
 	// set up approx space for box volumes
 	SmartPtr<ApproximationSpace<dom_type> > approxVol =
-			make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain()));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 1)));
 	std::vector<std::string> vol_cmp_names(1);
 	vol_cmp_names[0] = std::string("vol");
 	try {approxVol->add(vol_cmp_names, m_lfeid, m_vSubset);}
-		UG_CATCH_THROW("Failed to add functions to approximation space on specified subsets.");
+	UG_CATCH_THROW("Failed to add functions to approximation space on specified subsets.");
 	approxVol->init_top_surface();
 
 
 	// create flux and volume grid functions from their respective approx spaces
-	SmartPtr<TGridFunction> flux = make_sp(new TGridFunction(approxFlux));
-	SmartPtr<TGridFunction> vol = make_sp(new TGridFunction(approxVol));
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux
+		= make_sp(new GridFunction<dom_type, CPUBlockAlgebra<dim> >(approxFlux));
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
+		= make_sp(new GridFunction<dom_type, CPUAlgebra>(approxVol));
 	flux->set(0.0);	// in order to init CONSISTENT
 	vol->set(0.0);	// in order to init CONSISTENT
 
@@ -937,10 +895,19 @@ SmartPtr<TGridFunction> FluxExporter<TGridFunction>::calc_flux(number scale_fact
 
 
 	// apply constraints (notably for hanging nodes)
-	if (m_hangingConstraint.valid())
+	if (m_hangingConstraintFlux.valid())
 	{
-		m_hangingConstraint->adjust_defect(*flux, *m_u, flux->dd(), CT_HANGING);
-		m_hangingConstraint->adjust_defect(*vol, *m_u, vol->dd(), CT_HANGING);
+		m_hangingConstraintFlux->set_approximation_space(approxFlux);
+		m_hangingConstraintFlux->set_ass_tuner(make_sp(new AssemblingTuner<CPUBlockAlgebra<dim> >())); // dummy
+		GridFunction<dom_type, CPUBlockAlgebra<dim> > dummy(approxFlux, false); // not needed in adjust_defect
+		m_hangingConstraintFlux->adjust_defect(*flux, dummy, flux->dd(), CT_HANGING);
+	}
+	if (m_hangingConstraintVol.valid())
+	{
+		m_hangingConstraintVol->set_approximation_space(approxVol);
+		m_hangingConstraintVol->set_ass_tuner(make_sp(new AssemblingTuner<CPUAlgebra>())); // dummy
+		GridFunction<dom_type, CPUAlgebra> dummy(approxVol, false); // not needed in adjust_defect
+		m_hangingConstraintVol->adjust_defect(*vol, dummy, vol->dd(), CT_HANGING);
 	}
 
 	// box-wise division of flux value by box volume to get true flux density; scaling
@@ -967,6 +934,17 @@ SmartPtr<TGridFunction> FluxExporter<TGridFunction>::calc_flux(number scale_fact
 	#endif
 	#ifdef UG_DIM_3
 		template class FluxExporter<GridFunction<Domain3d, CPUAlgebra> >;
+	#endif
+#endif
+#ifdef UG_CPU_5
+	#ifdef UG_DIM_1
+		template class FluxExporter<GridFunction<Domain1d, CPUBlockAlgebra<5> > >;
+	#endif
+	#ifdef UG_DIM_2
+		template class FluxExporter<GridFunction<Domain2d, CPUBlockAlgebra<5> > >;
+	#endif
+	#ifdef UG_DIM_3
+		template class FluxExporter<GridFunction<Domain3d, CPUBlockAlgebra<5> > >;
 	#endif
 #endif
 

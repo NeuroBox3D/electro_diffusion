@@ -68,28 +68,46 @@ static void DomainAlgebra(Registry& reg, string grp)
 	string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
 	string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
 
-	typedef typename TAlgebra::vector_type vector_type;
+	static const int dim = TDomain::dim;
 	typedef GridFunction<TDomain, TAlgebra> TGridFunction;
 
-	static const int dim = TDomain::dim;
-
 	// write residuals to file function for param optimization
-	reg.add_function("write_residuals_to_file", &writeResidualsToFile<TGridFunction>, grp.c_str(),
-						 "", "solution#reference solution#outFileName",
-						 "writes residuals in every dof to file as required by Ivo's optimization routines "
-						 "and returns squared 2-norm of residual vector");
+	{
+		reg.add_function("write_residuals_to_file", &writeResidualsToFile<TGridFunction>, grp.c_str(),
+			"", "solution#reference solution#outFileName",
+			"writes residuals in every dof to file as required by Ivo's optimization routines "
+			"and returns squared 2-norm of residual vector");
+	}
 
-	// export solution
-	reg.add_function("export_solution", &exportSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
-					 "", "solution#time#subsetNames#functionNames#outFileName",
-					 "outputs solutions to file");
+	// export/import solution
+	{
+		reg.add_function("export_solution", &exportSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+			"", "solution#time#subsetNames#functionNames#outFileName",
+			"outputs solutions to file");
 
-	// import solution
-	reg.add_function("import_solution", &importSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
-					 "", "solution#subset names#function name#input file name",
-					 "writes values for the given function and on the given subsets "
-					 "from the given file to the given solution vector "
-					 "(using the value of the nearest neighbor for each vertex)");
+		reg.add_function("import_solution", &importSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
+			"", "solution#subset names#function name#input file name",
+			"writes values for the given function and on the given subsets "
+			"from the given file to the given solution vector "
+			"(using the value of the nearest neighbor for each vertex)");
+	}
+
+	// vtk export for higher order grid functions
+	{
+		reg.add_function("vtk_export_ho",
+			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
+				SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*)>
+				(&vtk_export_ho<TGridFunction>),
+			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
+			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
+		reg.add_function("vtk_export_ho",
+			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
+				SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*, size_t, number)>
+				(&vtk_export_ho<TGridFunction>),
+			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
+			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
+	}
+
 
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
@@ -131,34 +149,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "MultiplicativeInterface1D", tag);
 	}
 
-#if 0
-	// InterfaceMapper
-	{
-		typedef typename Interface1D<TDomain, TAlgebra>::Interface1DMapper T;
-		typedef ILocalToGlobalMapper<TAlgebra> TBase;
-		string name = string("Interface1DMapper").append(suffix);
-		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(SmartPtr<IAssemble<TAlgebra> >)>
-				("SmartPtr to domainDisc")
-			.add_method("add_interface", &T::add_interface, "", "SmartPtr to class of IInterface1D", "", "")
-			.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "Interface1DMapper", tag);
-
-	}
-
-	// constraint for useless DoFs
-	{
-		typedef CopyNeighborValueConstraint<TDomain, TAlgebra> T;
-		typedef IDomainConstraint<TDomain, TAlgebra> TBase;
-		string name = string("CopyNeighborValueConstraint").append(suffix);
-		reg.add_class_<T, TBase >(name, grp)
-			.template add_constructor<void (*)(const char*, const char*)>
-				("function(s)#constrained subset")
-				.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "CopyNeighborValueConstraint", tag);
-	}
-#endif
-
 	// Domain1dSolutionAdjuster
 	{
 		typedef Domain1dSolutionAdjuster<TDomain, TAlgebra> T;
@@ -171,22 +161,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("adjust_solution", &T::adjust_solution, "", "solution grid function", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "Domain1dSolutionAdjuster", tag);
-	}
-
-	// vtk export for higher order grid functions
-	{
-		reg.add_function("vtk_export_ho",
-			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&,
-						size_t, SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*)>
-				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
-			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
-			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
-		reg.add_function("vtk_export_ho",
-			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
-						SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*, size_t, number)>
-				(&vtk_export_ho<GridFunction<TDomain, TAlgebra> >),
-			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
-			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
 
 	// flux field export
@@ -254,10 +228,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 						"", "filename#step#time#flux name#scale factor", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FluxExporter", tag);
-
-		//reg.add_function("calculate_box_nernst_fluxes", &calculate_box_nernst_fluxes<TGridFunction>,
-		//	grp.c_str(), "", "grid function#species component name#potential component name",
-		//	"Calculates a vector-valued grid function which is the Nernst flux density of the given species in every FV box.");
 	}
 
 	// PNP smoothers
@@ -268,9 +238,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_<TILU, TBase>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
 			.add_method("set_method", &TILU::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+			.add_method("add_charge_surface_pair", &TILU::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
 			.add_method("set_parallelization_strategy", &TILU::set_parallelization_strategy, "",
 				"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
-			.add_method("add_charge_surface_pair", &TILU::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP_ILU", tag);
 
@@ -280,9 +250,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_<TGS, TBase>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
 			.add_method("set_method", &TGS::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
+			.add_method("add_charge_surface_pair", &TGS::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
 			.add_method("set_parallelization_strategy", &TGS::set_parallelization_strategy, "",
 				"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
-			.add_method("add_charge_surface_pair", &TGS::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP_GS", tag);
 	}
@@ -571,50 +541,13 @@ static void Common(Registry& reg, string grp)
 	}
 }
 
+
 }; // end Functionality
-
-
-struct BlockFunctionality
-{
-	template <typename TDomain, typename TAlgebra>
-	static void DomainAlgebra(Registry& reg, string grp)
-	{
-		string suffix = GetDomainAlgebraSuffix<TDomain,TAlgebra>();
-		string tag = GetDomainAlgebraTag<TDomain,TAlgebra>();
-
-		// PNP smoothers
-		{
-			typedef PNPSmoother<TDomain, TAlgebra, ILU> TILU;
-			typedef IPreconditioner<TAlgebra> TBase;
-			string name = string("PNP_ILU").append(suffix);
-			reg.add_class_<TILU, TBase>(name, grp)
-				.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
-				.add_method("set_method", &TILU::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
-				.add_method("add_charge_surface_pair", &TILU::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
-				.add_method("set_parallelization_strategy", &TILU::set_parallelization_strategy, "",
-					"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
-				.set_construct_as_smart_pointer(true);
-			reg.add_class_to_group(name, "PNP_ILU", tag);
-
-			typedef PNPSmoother<TDomain, TAlgebra, GaussSeidel> TGS;
-			typedef IPreconditioner<TAlgebra> TBase;
-			name = string("PNP_GS").append(suffix);
-			reg.add_class_<TGS, TBase>(name, grp)
-				.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
-				.add_method("set_method", &TGS::set_method, "", "blocking method: 0 for non-overlapping blocks", "", "")
-				.add_method("add_charge_surface_pair", &TGS::add_charge_surface_pair, "", "charged surface subset name#volume subset name", "", "")
-				.add_method("set_parallelization_strategy", &TGS::set_parallelization_strategy, "",
-					"0 for unique matrix and defect; 1 for consistent matrix and additive defect", "", "")
-				.set_construct_as_smart_pointer(true);
-			reg.add_class_to_group(name, "PNP_GS", tag);
-		}
-	}
-};
 
 // end group plugin_nernst_planck
 /// \}
 
-} // end namespace calciumDynamics
+} // end namespace nernst_planck
 
 
 /**
@@ -625,38 +558,32 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 {
 	grp.append("/nernst_planck");
 	typedef nernst_planck::Functionality Functionality;
-	typedef nernst_planck::BlockFunctionality BlockFunctionality;
 
-	// most (if not all) algebra-dependent code is only meant for non-blocked algebras
+	// we only register with algebra types CPU1 and CPU5,
+	// as we explicitly instantiate templates only with these in cpp files
 	typedef boost::mpl::list
 	<
 		#ifdef UG_CPU_1
 		CPUAlgebra,
 		#endif
-		end_boost_list
-	> MyCompileAlgebraList;
-
-	typedef boost::mpl::list
-	<
 		#ifdef UG_CPU_5
 		CPUBlockAlgebra<5>,
 		#endif
 		end_boost_list
-	> MyCompileBlockAlgebraList;
+	> MyCompileAlgebraList;
 
-	try{
+	try
+	{
 		RegisterCommon<Functionality>(*reg,grp);
 		RegisterDimensionDependent<Functionality>(*reg,grp);
 		RegisterDomainDependent<Functionality>(*reg,grp);
-		//RegisterAlgebraDependent<Functionality>(*reg,grp);
+		//RegisterAlgebraDependent<Functionality, MyCompileAlgebraList>(*reg,grp);
 		RegisterDomainAlgebraDependent<Functionality, CompileDomainList, MyCompileAlgebraList>(*reg,grp);
-		RegisterDomainAlgebraDependent<BlockFunctionality, CompileDomainList, MyCompileBlockAlgebraList>(*reg,grp);
-		//RegisterDomainAlgebraDependent<Functionality>(*reg,grp);
 	}
 	UG_REGISTRY_CATCH_THROW(grp);
 }
 
-}// namespace ug
+} // namespace ug
 
 
 

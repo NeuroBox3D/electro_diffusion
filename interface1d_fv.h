@@ -441,10 +441,10 @@ class Interface1D
 		 * @param u_itf1	solution at interface vertex on constrained side
 		 */
 		virtual void constraintValue
-		(	typename vector_type::value_type& d,
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+		(	number& d,
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		) = 0;
 
 		/// function returning the defect derivatives for a constrained node
@@ -463,10 +463,10 @@ class Interface1D
 		 * @param u_itf1	solution at interface vertex on constrained side
 		 */
 		virtual void constraintValueDerivs
-		(	typename vector_type::value_type dd[3],
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+		(	number dd[3],
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		) = 0;
 
 	public:
@@ -477,14 +477,14 @@ class Interface1D
 
 			/// default constructor
 			ConstrainerInfo()
-				: constrgInd(0), constrainerIsHanging(false), fct(0){};
+				: constrgInd(0, 0), constrainerIsHanging(false), fct(0){};
 
 			/// custom constructor
-			ConstrainerInfo(size_t _constrgInd, bool hanging, size_t _fct)
+			ConstrainerInfo(DoFIndex _constrgInd, bool hanging, size_t _fct)
 				: constrgInd(_constrgInd), constrainerIsHanging(hanging), fct(_fct) {};
 
 			/// the constraining index
-			size_t constrgInd;
+			DoFIndex constrgInd;
 
 			/// whether the constrainer is hanging
 			bool constrainerIsHanging;
@@ -496,13 +496,13 @@ class Interface1D
 		struct ConstraintInfo
 		{
 			public:
-			/// algebraic indices for the interface nodes (and all functions)
+			/// DoF indices for the interface nodes (and all functions)
 			// [0] MUST contain the index of the interface node for the high-dim. end;
 			// [1] the index of the interface node for the 1d end
-			std::vector<size_t> algInd[2];
+			std::vector<DoFIndex> dofInd[2];
 
-			/// algebraic indices of constrained nodes and their respective constrainers
-			std::map<size_t, ConstrainerInfo> constrainerMap;
+			/// DoF indices of constrained nodes and their respective constrainers
+			std::map<DoFIndex, ConstrainerInfo> constrainerMap;
 		};
 
 	private:
@@ -724,24 +724,24 @@ class AdditiveInterface1D : public Interface1D<TDomain, TAlgebra>
 
 		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue
-		(	typename vector_type::value_type& d,
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+		(	number& d,
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		)
 		{
-			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
+			Proxy<number>::constraintValue(d, u_c, u_itf0, u_itf1);
 		}
 
 		/// \copydoc IInterface1D::constraintValueDerivs()
 		virtual void constraintValueDerivs
-		(	typename vector_type::value_type dd[3],
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+		(	number dd[3],
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		)
 		{
-			Proxy<typename vector_type::value_type>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
+			Proxy<number>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
 		}
 
 
@@ -856,25 +856,25 @@ class MultiplicativeInterface1D: public Interface1D<TDomain, TAlgebra>
 		/// \copydoc IInterface1D::constraintValue()
 		virtual void constraintValue
 		(
-			typename vector_type::value_type& d,
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+			number& d,
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		)
 		{
-			Proxy<typename vector_type::value_type>::constraintValue(d, u_c, u_itf0, u_itf1);
+			Proxy<number>::constraintValue(d, u_c, u_itf0, u_itf1);
 		}
 
 		/// \copydoc IInterface1D::constraintValueDerivs()
 		virtual void constraintValueDerivs
 		(
-			typename vector_type::value_type dd[3],
-			const typename vector_type::value_type& u_c,
-			const typename vector_type::value_type& u_itf0,
-			const typename vector_type::value_type& u_itf1
+			number dd[3],
+			const number& u_c,
+			const number& u_itf0,
+			const number& u_itf1
 		)
 		{
-			Proxy<typename vector_type::value_type>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
+			Proxy<number>::constraintValueDerivs(dd, u_c, u_itf0, u_itf1);
 		}
 
 		// The following proxy implementation is used to distinguish the cases:
@@ -939,7 +939,7 @@ class MultiplicativeInterface1D: public Interface1D<TDomain, TAlgebra>
 				const number& u_itf1
 			)
 			{
-				if (std::fabs(u_itf0) < 2 * std::numeric_limits<typename vector_type::value_type>::denorm_min())
+				if (std::fabs(u_itf0) < 2 * std::numeric_limits<number>::denorm_min())
 					{UG_THROW("Denominator practically zero.");}
 
 				dd[0] =  u_itf1 / u_itf0;
@@ -952,7 +952,5 @@ class MultiplicativeInterface1D: public Interface1D<TDomain, TAlgebra>
 } // namespace nernst_planck
 } // namespace ug
 
-
-#include "interface1d_fv_impl.h"
 
 #endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
