@@ -49,6 +49,7 @@
 #include "lib_grid/file_io/file_io_ugx.h"                                               // for GridWriterUGX
 #include "lib_grid/grid/grid_base_object_traits.h"                                      // for VertexIterator
 #include "lib_grid/grid/grid_base_objects.h"                                            // for Face, Edge
+#include "lib_grid/grid/grid_util.h"                                                    // for CompareVertices
 #include "lib_grid/grid_objects/grid_objects_0d.h"                                      // for RegularVertex
 #include "lib_grid/grid_objects/grid_objects_1d.h"                                      // for RegularEdge
 #include "lib_grid/grid_objects/grid_objects_2d.h"                                      // for Triangle
@@ -74,6 +75,7 @@ MorphoGen::MorphoGen()
   m_shProj(m_grid), m_projHandler(&m_shProj),
   m_tmpHeadHeight(0.0),
   m_bFilAnisotropic(false),
+  m_bWithRefinementProjector(true),
   DENDRITE_LENGTH(1200.0),
   DENDRITE_RADIUS(200.0),
   MEMBRANE_RADIUS(10.0),
@@ -146,6 +148,12 @@ void MorphoGen::set_num_filaments(size_t nFil)
 void MorphoGen::set_fil_anisotropic(bool filAniso)
 {
 	m_bFilAnisotropic = filAniso;
+}
+
+
+void MorphoGen::set_with_refinement_projector(bool withRP)
+{
+	m_bWithRefinementProjector = withRP;
 }
 
 void MorphoGen::set_seed(size_t seed)
@@ -420,7 +428,7 @@ bool MorphoGen::is_cut_by_spine_shaft
 			size_t el_sz = el.size();
 			for (size_t e = 0; e < el_sz; ++e)
 			{
-				if (vertexGroupsMatch(el[e], ed))
+				if (CompareVertices(el[e], &ed))
 				{
 					outCutEdges.push_back(el[e]);
 					outCutEdgeIndices.push_back(i);
@@ -609,7 +617,7 @@ void MorphoGen::graft_spine()
 		size_t el_sz = el.size();
 		for (size_t e = 0; e < el_sz; ++e)
 		{
-			if (vertexGroupsMatch(el[e], ed))
+			if (CompareVertices(el[e], &ed))
 			{
 				m_sel.select(el[e]);
 				break;
@@ -1858,7 +1866,21 @@ void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offse
 		size_t afsz = assFaces.size();
 		for (size_t i = 0; i < afsz; ++i)
 		{
-			VecAdd(normal, normal, m_aaNorm[assFaces[i]]);
+			// only average over faces in the new frontier
+			// they are identified as having only selected (i.e., newly created) vertices
+			bool allSelected = true;
+			const size_t avsz = assFaces[i]->num_vertices();
+			for (size_t j = 0; j < avsz; ++j)
+			{
+				if (!m_sel.is_selected(assFaces[i]->vertex(j)))
+				{
+					allSelected = false;
+					break;
+				}
+			}
+
+			if (allSelected)
+				VecAdd(normal, normal, m_aaNorm[assFaces[i]]);
 		}
 		VecNormalize(normal, normal);
 
@@ -2485,11 +2507,14 @@ void MorphoGen::tetrahedralize()
 	// tetrahedralize the filaments
 	m_sel.clear();
 	m_sel.select(m_sh.begin<Face>(SURF_CH_BND), m_sh.end<Face>(SURF_CH_BND));
-	SelectAssociatedEdges(m_sel, m_sel.begin<Face>(), m_sel.end<Face>());
-	SelectAssociatedVertices(m_sel, m_sel.begin<Edge>(), m_sel.end<Edge>());
-	m_sh.set_default_subset_index(FIL_NECK_SI);
-	try {tetrahedralize_selection(FIL_NECK_SI);}
-	UG_CATCH_THROW("Tetrahedralization of filaments failed.");
+	if (m_sel.num<Face>())
+	{
+		SelectAssociatedEdges(m_sel, m_sel.begin<Face>(), m_sel.end<Face>());
+		SelectAssociatedVertices(m_sel, m_sel.begin<Edge>(), m_sel.end<Edge>());
+		m_sh.set_default_subset_index(FIL_NECK_SI);
+		try {tetrahedralize_selection(FIL_NECK_SI);}
+		UG_CATCH_THROW("Tetrahedralization of filaments failed.");
+	}
 
 	// tetrahedralize the cytosol
 	m_sel.clear();
@@ -2975,12 +3000,15 @@ void MorphoGen::create_dendrite(const std::string& filename)
 	GridWriterUGX ugxWriter;
 	ugxWriter.add_grid(m_grid, "defGrid", aPosition);
 	ugxWriter.add_subset_handler(m_sh, "defSH", 0);
-	ugxWriter.add_subset_handler(m_shProj, "projSH", 0);
-	ugxWriter.add_projection_handler(m_projHandler, "defPH", 0);
+	if (m_bWithRefinementProjector)
+	{
+		ugxWriter.add_subset_handler(m_shProj, "projSH", 0);
+		ugxWriter.add_projection_handler(m_projHandler, "defPH", 0);
+	}
 	if (!ugxWriter.write_to_file((filePath+fileName).c_str()))
 		UG_THROW("Grid could not be written to file '" << filePath << fileName << "'.");
 
-
+#if 0
 	// test loading/refining
 	Domain3d dom;
 	dom.create_additional_subset_handler("projSH");
@@ -2995,7 +3023,7 @@ void MorphoGen::create_dendrite(const std::string& filename)
 		+ m_tmpHeadHeight + SPINE_NECK_LENGTH + 4*BOX_MARGIN;
 	try {SaveGridHierarchyTransformed(*dom.grid(), *dom.subset_handler(), (filePath+fileName).c_str(), offset);}
 	UG_CATCH_THROW("Grid could not be written to file '" << filePath << fileName << "'.");
-
+#endif
 }
 
 

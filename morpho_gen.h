@@ -49,6 +49,7 @@ class MorphoGen
 		void set_num_neck_filaments(size_t nFil);
 		void set_num_filaments(size_t nFil);
 		void set_fil_anisotropic(bool filAniso);
+		void set_with_refinement_projector(bool withRP);
 		void set_seed(size_t seed);
 		void set_randomized(bool rand);
 		void set_membrane_envelope_radius(number mem_env_rad);
@@ -195,6 +196,7 @@ class MorphoGen
 
 		// morphology params
 		bool m_bFilAnisotropic;
+		bool m_bWithRefinementProjector;
 
 		number DENDRITE_LENGTH;
 		number DENDRITE_RADIUS;
