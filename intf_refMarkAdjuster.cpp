@@ -65,6 +65,12 @@ void InterfaceRefMarkAdjuster::ref_marks_changed
 				||
 				(m_ssh->get_subset_index(e->vertex(1)) == m_vIntf[l]->constrained_subset_index()
 					&& e->vertex(0) == m_vIntf[l]->get_constrainer_object(e->vertex(1)))
+				||
+				(m_ssh->get_subset_index(e->vertex(0)) == m_vIntf[l]->intf_node_1d_subset_index()
+					&& e->vertex(1) == m_vIntf[l]->get_constrainer_object(e->vertex(0)))
+				||
+				(m_ssh->get_subset_index(e->vertex(1)) == m_vIntf[l]->intf_node_1d_subset_index()
+					&& e->vertex(0) == m_vIntf[l]->get_constrainer_object(e->vertex(1)))
 				)
 				ref.mark(e, RM_ANISOTROPIC);
 	}
