@@ -32,7 +32,9 @@
 	#include "redistribution_util.h"                            // for redistribute
 #endif
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
-
+#ifdef __APPLE__
+	#include "mem_info.h"
+#endif
 
 using namespace std;
 using namespace ug::bridge;
@@ -527,6 +529,23 @@ static void Common(Registry& reg, string grp)
 			.add_method("create_dendrite_1d", &T::create_dendrite_1d, "", "", "")
 			.set_construct_as_smart_pointer(true);
 	}
+
+#ifdef __APPLE__
+	// MemInfo
+	{
+		typedef MemInfo T;
+		string name = string("MemInfo");
+		reg.add_class_<T>(name, grp)
+			.add_constructor()
+			.add_method("memory_consumption", &T::memory_consumption, "", "", "")
+			.add_method("local_resident_memory", &T::local_resident_memory, "", "", "")
+			.add_method("local_virtual_memory", &T::local_virtual_memory, "", "", "")
+			.add_method("global_resident_memory", &T::global_resident_memory, "", "", "")
+			.add_method("global_virtual_memory", &T::global_virtual_memory, "", "", "")
+
+			.set_construct_as_smart_pointer(true);
+	}
+#endif
 }
 
 

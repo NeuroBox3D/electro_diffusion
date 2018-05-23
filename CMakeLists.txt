@@ -41,6 +41,10 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp_smoother.cpp
             redistribution_util.cpp
    )
+   
+if (APPLE)
+	set(SOURCES ${SOURCES} mem_info.cpp)
+endif (APPLE)
 
 if (PARALLEL)
 	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp) 
