@@ -28,6 +28,7 @@
 #include "pnp1d_fv1.h"                                      // for PNP1D_FV1
 #include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
 #include "pnp_upwind.h"                                     // for PNPUpwind
+#include "redistribution_util.h"                            // for redistribute
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
 
 
@@ -413,6 +414,7 @@ static void Domain(Registry& reg, string grp)
 
 	reg.add_function("add_extension_ref_mark_adjuster", &add_extension_ref_mark_adjuster<TDomain>, grp.c_str(), "", "", "");
 
+	reg.add_function("redistribute", &redistribute<TDomain>, grp.c_str(), "", "", "", "");
 
 	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
