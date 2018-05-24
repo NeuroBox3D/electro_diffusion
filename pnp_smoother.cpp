@@ -188,7 +188,9 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::preprocess(SmartPtr<MatrixOperato
 		}
 		else if (m_ps == 1)	// consistent / additive
 		{
-			MakeConsistent(*pOp, mat);
+			mat = *pOp;
+			MatMakeConsistentOverlap0(mat);
+			//MakeConsistent(*pOp, mat);
 		}
 		else UG_THROW("Invalid parallelization strategy " << m_ps << ".");
 		pmat = &mat;
@@ -370,6 +372,8 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::step
 		c.set_storage_type(PST_ADDITIVE);
 	else UG_THROW("Invalid parallelization strategy " << m_ps << ".");
 #endif
+
+	c.change_storage_type(PST_CONSISTENT);
 
 	return success;
 }
