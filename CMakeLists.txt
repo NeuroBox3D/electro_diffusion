@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 2.6)
 
 project(NERNST_PLANCK)
-
+include(CheckCXXSymbolExists)
 
 # include the definitions and dependencies for ug-plugins.
 include(${UG_ROOT_CMAKE_PATH}/ug_plugin_includes.cmake)
@@ -54,6 +54,7 @@ endif (Parmetis)
 # error if tetgen libs/includes are not found
 if (NPTetgen)
 	UGInstall("tetgen" TETGEN15_PATH)
+
 	unset(TETGEN15_LIBS CACHE)
 	find_library(TETGEN15_LIBS NAMES tet PATHS ${TETGEN15_PATH})
 	if (NOT TETGEN15_LIBS)
@@ -64,6 +65,12 @@ if (NPTetgen)
 	if (NOT TETGEN15_INCLUDE_PATH)
 		message(FATAL_ERROR "ERROR: TetGen-1.5 include file tetgen.h not found in ${TETGEN15_PATH}.")
 	endif (NOT TETGEN15_INCLUDE_PATH)
+		
+	check_cxx_symbol_exists(fsymself ${TETGEN15_INCLUDE_PATH}/tetgen.h FSMYSELF_EXISTS)
+	if (NOT FSMYSELF_EXISTS)
+		message(FATAL_ERROR "ERROR: Though TetGen was found, it does not seem to be the required version 1.5.")
+		unset(FSMYSELF_EXISTS CACHE)
+	endif()
 endif (NPTetgen)
 
 
