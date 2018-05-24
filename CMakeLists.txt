@@ -40,6 +40,7 @@ set(SOURCES nernst_planck_plugin.cpp
             morpho_gen.cpp
             pnp_smoother.cpp
             redistribution_util.cpp
+            neck_recorder.cpp
    )
    
 if (APPLE)
@@ -48,7 +49,7 @@ endif (APPLE)
 
 if (PARALLEL)
 	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp) 
-endif(PARALLEL)
+endif (PARALLEL)
 
 if (Parmetis)
 	set (NPParmetis ON)

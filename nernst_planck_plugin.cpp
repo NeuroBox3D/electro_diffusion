@@ -23,6 +23,7 @@
 #include "intf_refMarkAdjuster.h"                           // for InterfaceRefMarkAdjuster
 #include "morpho_gen.h"                                     // for MorphoGen
 #include "nernst_planck_util.h"                             // for adjust_geom_after_refinement, exportSolution
+#include "neck_recorder.h"									// for current and voltage recordings across spine neck
 #include "order.h"                                          // for reorder_dof_distros_lex, reorder_dofs
 #include "pnp1d_fv.h"                                       // for PNP1D_FV
 #include "pnp1d_fv1.h"                                      // for PNP1D_FV1
@@ -262,6 +263,26 @@ static void DomainAlgebra(Registry& reg, string grp)
 		reg.add_class_to_group(name, "PNP_GS", tag);
 	}
 
+	// neck recorder
+	{
+		typedef NeckRecorder<TDomain, TAlgebra> T;
+		std::string name = std::string("NeckRecorder");
+		reg.add_class_<T>(name+suffix, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)> ("approx space")
+			.add_method("add_measurement_zone", &T::add_measurement_zone, "", "z coordinate # name",
+				"add a measurement manifold at given z location", "")
+			.add_method("set_cytosolic_subset", &T::set_cytosolic_subset, "", "cytosolic subset name",
+				"set the subset that recordings are to be taken in", "")
+			.add_method("set_diffusion_constants", &T::set_diffusion_constants, "",
+				"constants in the order K, Na, Cl, A", "set diffusion constants", "")
+			.add_method("set_temperature", &T::set_temperature, "", "temperature", "set temperature", "")
+			.add_method("record_current", &T::record_current, "", "output file name#time#solution#scale factor",
+				"record current through measurement manifold to file (each measurement zone separately)", "")
+			.add_method("record_potential", &T::record_potential, "", "output file name#time#solution",
+				"record averaged potential to file (each measurement zone separately)", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name+suffix, name, tag);
+	}
 }
 
 /**
