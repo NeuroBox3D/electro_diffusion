@@ -18,6 +18,7 @@
 #include "lib_disc/quadrature/quadrature.h"  // QuadratureRule
 #include "lib_disc/quadrature/quadrature_provider.h"  // QuadratureRuleProvider
 #include "lib_disc/reference_element/reference_mapping_provider.h"  // DimReferenceMapping
+#include "lib_disc/spatial_disc/disc_util/conv_shape.h"  // ConvectionShapesNoUpwind
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"  // GeomProvider
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"  // FV1Geometry
 #include "lib_grid/algorithms/debug_util.h"  // ElementDebugInfo
@@ -30,11 +31,12 @@
 #include "lib_grid/file_io/file_io.h"  // SaveGridToFile  (only for testing, remove later)
 #include "choose_fvgeom.h"  // ChooseProperFVGeom
 
+
+//#define NECK_RECORDER_DEBUG 1
+
 namespace ug {
 namespace nernst_planck {
 
-
-//#define NECK_RECORDER_DEBUG 1
 
 #if NECK_RECORDER_DEBUG
 static Grid testGrid;
@@ -50,34 +52,154 @@ template <> Domain2d::position_attachment_type TestAttachment<Domain2d>::aPosTes
 template <> Domain3d::position_attachment_type TestAttachment<Domain3d>::aPosTest = Domain3d::position_attachment_type();
 #endif
 
+enum coState
+{
+	CS_BELOW = 1,
+	CS_ABOVE = 1 << 1  // equality is to be understood as above
+};
+
 static int cornerState(number pos, number thresh)
 {
 	if (pos < thresh)
-		return 1;
-	if (pos > thresh)
-		return 2;
-	return 3;
+		return CS_BELOW;
+	return CS_ABOVE;  // equality is regarded as being above
 }
 
 
 template <typename TDomain>
 static bool check_for_intersection
 (
-	typename domain_traits<TDomain::dim>::element_type* vol,
+	IVertexGroup* elem,
 	number thresh,
-	int cornerStates[domain_traits<TDomain::dim>::MaxNumVerticesOfElem],
-	typename TDomain::position_accessor_type& aaPos
+	typename TDomain::position_accessor_type& aaPos,
+	int cornerStates[domain_traits<TDomain::dim>::MaxNumVerticesOfElem] = NULL
 )
 {
 	// intersection exists if two of the volumes' vertices are located on opposite sides
 	int check = 0;
 
-	size_t nVrt = vol->num_vertices();
+	size_t nVrt = elem->num_vertices();
 	for (size_t v = 0; v < nVrt; ++v)
-		check |= cornerStates[v] = cornerState(aaPos[vol->vertex(v)][TDomain::dim-1], thresh);
+	{
+		const int coState = cornerState(aaPos[elem->vertex(v)][TDomain::dim-1], thresh);
+		check |= coState;
+		if (cornerStates)
+			cornerStates[v] = coState;
+	}
 
 	// no intersection -> continue
-	return (check & 3) == 3;
+	return (check & (CS_BELOW | CS_ABOVE)) == (CS_BELOW | CS_ABOVE);
+}
+
+
+
+template <typename TDomain>
+static int hangingCornerState
+(
+	Vertex* vrt,
+	SmartPtr<TDomain> dom,
+	number thresh
+)
+{
+	typename TDomain::position_accessor_type& aaPos = dom->position_accessor();
+
+	// normal vertex
+	if (!vrt->is_constrained())
+		return cornerState(aaPos[vrt][TDomain::dim-1], thresh);
+
+	// hanging vertex: bitwise-or of constrainer states
+	int state = 0;
+	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
+	edge_list el;
+	dom->grid()->associated_elements(el, vrt);
+	const size_t ne = el.size();
+	for (size_t e = 0; e < ne; ++e)
+	{
+		Edge* edge = el[e];
+		if (edge->is_constrained())
+		{
+			Vertex* other = GetOpposingSide(*dom->grid(), edge, vrt);
+			if (!other->is_constrained())
+				state |= cornerState(aaPos[other][TDomain::dim-1], thresh);
+		}
+	}
+
+	return state;
+}
+
+
+template <typename TDomain>
+static int hangingCornerStateCoarse
+(
+	const typename TDomain::position_type& coords,
+	number thresh,
+	typename grid_dim_traits<TDomain::dim>::element_type* elem,
+	ConstSmartPtr<TDomain> dom,
+	number refLenSq
+)
+{
+	// find constraingin edge
+	const typename TDomain::position_accessor_type aaPos = dom->position_accessor();
+	size_t ne = elem->num_edges();
+	EdgeDescriptor ed;
+	size_t e = 0;
+	typename TDomain::position_type eCenter;
+	for (; e < ne; ++e)
+	{
+		ed = elem->edge_desc(e);
+		VecScaleAdd(eCenter, 0.5, aaPos[ed.vertex(0)], 0.5, aaPos[ed.vertex(1)]);
+		if (VecDistanceSq(eCenter, coords) < 1e-6 * refLenSq)
+			break;
+	}
+	UG_COND_THROW(e == ne, "No edge center is located at the hanging node's position.");
+
+	// now investigate its vertices
+	int state = cornerState(aaPos[ed.vertex(0)][TDomain::dim-1], thresh);
+	state |= cornerState(aaPos[ed.vertex(1)][TDomain::dim-1], thresh);
+
+	return state;
+}
+
+#ifdef UG_DIM_1
+template <>
+int hangingCornerStateCoarse<Domain1d>
+(
+	const Domain1d::position_type& coords,
+	number thresh,
+	grid_dim_traits<Domain1d::dim>::element_type* elem,
+	ConstSmartPtr<Domain1d> dom,
+	number refLenSq
+)
+{
+	UG_THROW("There can be no 1d hanging nodes.");
+}
+#endif
+
+/// Checks whether a volume is in the extended intersection, i.e.,
+/// if it is intersected itself or of it contains a hanging node
+/// which is constrained by an intersected edge.
+template <typename TDomain>
+static bool check_for_hanging_intersection
+(
+	typename domain_traits<TDomain::dim>::element_type* vol,
+	SmartPtr<TDomain> dom,
+	number thresh,
+	int cytSI,
+	int cornerStates[domain_traits<TDomain::dim>::MaxNumVerticesOfElem]
+)
+{
+	int check = 0;
+
+	const size_t nVrt = vol->num_vertices();
+	for (size_t v = 0; v < nVrt; ++v)
+	{
+		Vertex* vrt = vol->vertex(v);
+
+		// check for normal intersection
+		check |= cornerStates[v] = hangingCornerState(vrt, dom, thresh);
+	}
+
+	return check == (CS_BELOW | CS_ABOVE);
 }
 
 
@@ -412,6 +534,7 @@ static void quadrature_weights_and_points
 }
 
 
+#ifdef UG_DIM_3
 template <>
 void quadrature_weights_and_points<Domain3d>
 (
@@ -437,8 +560,9 @@ void quadrature_weights_and_points<Domain3d>
 		}
 	}
 }
+#endif
 
-
+#ifdef UG_DIM_2
 template <>
 void quadrature_weights_and_points<Domain2d>
 (
@@ -449,6 +573,7 @@ void quadrature_weights_and_points<Domain2d>
 {
 	quadrature_weights_and_points<Domain2d, Edge>(iv, vQuadPts, vIsecCorners);
 }
+#endif
 
 
 template <typename TDomain, typename TElem, bool hanging>
@@ -457,6 +582,7 @@ static void integration_points_of_approximating_scvfs_elem
 	NeckRecorderBase::IntegrationVolume& iv,
 	TElem* elem,
 	number thresh,
+	int cornerState[domain_traits<TDomain::dim>::MaxNumVerticesOfElem],
 	ConstSmartPtr<TDomain> dom
 )
 {
@@ -482,24 +608,127 @@ static void integration_points_of_approximating_scvfs_elem
 	for (size_t i = 0; i < nscvf; ++i)
 	{
 		const typename fvgeom_type::SCVF& scvf = geo.scvf(i);
+		size_t from = scvf.from();
+		size_t to = scvf.to();
 
-		// get corresponding edge's corner ids
-		const typename TDomain::position_type& coCoFrom = geo.global_node_position(scvf.from());
-		const typename TDomain::position_type& coCoTo = geo.global_node_position(scvf.to());
+		const bool fromIsHangingInCoarse = from >= elem->num_vertices();
+		const bool toIsHangingInCoarse = to >= elem->num_vertices();
 
-		// calculate corner state
-		const int coStFrom = cornerState(coCoFrom[TDomain::dim-1], thresh);
-		const int coStTo = cornerState(coCoTo[TDomain::dim-1], thresh);
+		const typename TDomain::position_type& coCoFrom = geo.global_node_position(from);
+		const typename TDomain::position_type& coCoTo = geo.global_node_position(to);
+		const number refLenSq = VecDistanceSq(coCoFrom, coCoTo);
 
-		// find out whether current scvf is part of approximating manifold;
-		// this is the case if the corners of the corresponding edge are on different sides
-		// of the manifold or one of them is exactly ON the manifold
-		const bool edgeIsCut = (coStFrom | coStTo) == 3;
+		int coStFrom = 0;
+		int coStTo = 0;
 
-		if (!edgeIsCut)
+		if (!fromIsHangingInCoarse)
+			// corner state is already known
+			coStFrom = cornerState[from];
+		else
+			// corner state must be composed from constrainers
+			coStFrom = hangingCornerStateCoarse(coCoFrom, thresh, elem, dom, refLenSq);
+
+		if (!toIsHangingInCoarse)
+			// corner state is already known
+			coStTo = cornerState[to];
+		else
+			// corner state must be composed from constrainers
+			coStTo = hangingCornerStateCoarse(coCoTo, thresh, elem, dom, refLenSq);
+
+
+		number weight = 0.0;
+		if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+			weight = 1.0;
+		else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+			weight = -1.0;
+		else if ((coStFrom == CS_BELOW && coStTo == (CS_BELOW | CS_ABOVE))
+			|| (coStFrom == (CS_BELOW | CS_ABOVE) && coStTo == CS_ABOVE))
+			weight = 0.5;
+		else if ((coStFrom == (CS_BELOW | CS_ABOVE) && coStTo == CS_BELOW)
+			|| (coStFrom == CS_ABOVE && coStTo == (CS_BELOW | CS_ABOVE)))
+			weight = -0.5;
+
+		if (weight == 0.0)
 			continue;
 
-		const bool cutThroughCorner = coStFrom & coStTo;
+
+#if 0
+		// both normal
+		if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+		{
+			number weight = 1.0;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+		{
+			number weight = -1.0;
+		}
+
+
+		// from normal, to hanging
+		if (coStFrom == CS_BELOW && coStTo == (CS_BELOW | CS_ABOVE | CS_HANGING))
+		{
+			number weight = 0.5;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == (CS_BELOW | CS_ABOVE | CS_HANGING))
+		{
+			number weight = -0.5;
+		}
+		else if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+		{
+			number weight = 1.0;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+		{
+			number weight = -1.0;
+		}
+
+
+		// from hanging, to normal
+		if (coStFrom == (CS_BELOW | CS_ABOVE | CS_HANGING) && coStTo == CS_ABOVE)
+		{
+			number weight = 0.5;
+		}
+		else if (coStFrom == (CS_BELOW | CS_ABOVE | CS_HANGING) && coStTo == CS_BELOW)
+		{
+			number weight = -0.5;
+		}
+		else if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+		{
+			number weight = 1.0;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+		{
+			number weight = -1.0;
+		}
+
+
+		// both hanging
+		if (coStFrom == CS_BELOW && coStTo == (CS_BELOW | CS_ABOVE | CS_HANGING))
+		{
+			number weight = 0.5;
+		}
+		else if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+		{
+			number weight = 1.0;
+		}
+		else if (coStFrom == (CS_BELOW | CS_ABOVE | CS_HANGING) && coStTo == CS_BELOW)
+		{
+			number weight = -0.5;
+		}
+		else if (coStFrom == (CS_BELOW | CS_ABOVE | CS_HANGING) && coStTo == CS_ABOVE)
+		{
+			number weight = 0.5;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+		{
+			number weight = -1.0;
+		}
+		else if (coStFrom == CS_ABOVE && coStTo == (CS_BELOW | CS_ABOVE | CS_HANGING))
+		{
+			number weight = -0.5;
+		}
+#endif
+
 
 #if NECK_RECORDER_DEBUG
 if (scvf.num_corners() == 4)
@@ -522,23 +751,29 @@ else if (scvf.num_corners() == 3)
 	}
 	testGrid.create<Triangle>(TriangleDescriptor(cornerVrts[0], cornerVrts[1], cornerVrts[2]));
 }
-else UG_THROW("Unexpected number of corners in SCVF.")
+else if (scvf.num_corners() == 2)
+{
+	Vertex* cornerVrts[2];
+	cornerVrts[0] = *testGrid.create<RegularVertex>();
+	cornerVrts[1] = *testGrid.create<RegularVertex>();
+	aaPosTest[cornerVrts[0]] = scvf.global_corner(0);
+	aaPosTest[cornerVrts[1]] = scvf.global_corner(1);
+
+	testGrid.create<RegularEdge>(EdgeDescriptor(cornerVrts[0], cornerVrts[1]));
+}
+else UG_THROW("Unexpected number of corners in SCVF: " << scvf.num_corners() << " instead of 2 or 3 or 4"
+		" in " << ElementDebugInfo(*dom->grid(), elem) << ".");
 #endif
 
 		// get integration point on scvf (for generalization to higher-order schemes, this would have to be adapted)
 		iv.vIPData.resize(iv.vIPData.size() + 1);
 		NeckRecorderBase::IPData& ipd = iv.vIPData.back();
 
-		ipd.weight = cutThroughCorner ? 0.5 : 1.0;
+		ipd.weight = weight;
 		ipd.detJ = 1.0; // more correctly, this would be the area of the scvf, but it's already contained in scvf.normal()
 
 		// orientation of normal must be from below manifold to above it; invert it if this is not the case
 		typename TDomain::position_type normal = scvf.normal();
-		if ((!cutThroughCorner && coStFrom == 2)
-			|| (cutThroughCorner &&
-				((coStFrom == 3 && coStTo == 1)
-				|| (coStTo == 3 && coStFrom == 2))))
-			VecScale(normal, normal, -1.0);
 
 		size_t nSh = scvf.num_sh();
 		ipd.vShapes.resize(nSh);
@@ -546,8 +781,12 @@ else UG_THROW("Unexpected number of corners in SCVF.")
 		for (size_t sh = 0; sh < nSh; ++sh)
 		{
 			ipd.vShapes[sh] = scvf.shape(sh);
-			ipd.vGradZ[sh] = VecProd(scvf.global_grad(sh), normal);
+			ipd.vGradZ[sh] = VecDot(scvf.global_grad(sh), normal);
 		}
+		MathVector<TDomain::dim> pos(0.0);
+		VecScaleAdd(pos, 0.5, scvf.global_corner(0), 0.5, scvf.global_corner(1));
+		ipd.pos[0] = pos[0];
+		ipd.pos[1] = pos[1];
 	}
 }
 
@@ -560,9 +799,10 @@ struct wrap_ipoas
 		NeckRecorderBase::IntegrationVolume& _iv,
 		typename domain_traits<TDomain::dim>::element_type* _elem,
 		number _thresh,
+		int _cornerState[domain_traits<TDomain::dim>::MaxNumVerticesOfElem],
 		ConstSmartPtr<TDomain> _dom
 	)
-	: iv(_iv), elem(_elem), thresh(_thresh), dom(_dom) {}
+	: iv(_iv), elem(_elem), thresh(_thresh), cornerState(_cornerState), dom(_dom) {}
 
 	template <typename TElem>
 	void operator() (TElem&)
@@ -570,12 +810,13 @@ struct wrap_ipoas
 		TElem* castElem = dynamic_cast<TElem*>(elem);
 		if (castElem)
 			integration_points_of_approximating_scvfs_elem<TDomain, TElem, hanging>
-				(iv, castElem, thresh, dom);
+				(iv, castElem, thresh, cornerState, dom);
 	}
 
 	NeckRecorderBase::IntegrationVolume& iv;
 	typename domain_traits<TDomain::dim>::element_type* elem;
 	number thresh;
+	int* cornerState;
 	ConstSmartPtr<TDomain> dom;
 };
 
@@ -586,11 +827,12 @@ static void integration_points_of_approximating_scvfs
 	NeckRecorderBase::IntegrationVolume& iv,
 	typename domain_traits<TDomain::dim>::element_type* elem,
 	number thresh,
+	int cornerState[domain_traits<TDomain::dim>::MaxNumVerticesOfElem],
 	ConstSmartPtr<TDomain> dom
 )
 {
 	typedef typename domain_traits<TDomain::dim>::DimElemList ElemList;
-	boost::mpl::for_each<ElemList>(wrap_ipoas<TDomain, hanging>(iv, elem, thresh, dom));
+	boost::mpl::for_each<ElemList>(wrap_ipoas<TDomain, hanging>(iv, elem, thresh, cornerState, dom));
 }
 
 
@@ -663,6 +905,7 @@ static void eval_shapes_and_grads
 	UG_THROW("This unspecialized implementation is never to be used.");
 }
 
+#ifdef UG_DIM_3
 template <>
 void eval_shapes_and_grads<Domain3d>
 (
@@ -682,7 +925,9 @@ void eval_shapes_and_grads<Domain3d>
 			"but other volume types are not supported by this method.");
 	}
 }
+#endif
 
+#ifdef UG_DIM_2
 template <>
 void eval_shapes_and_grads<Domain2d>
 (
@@ -702,6 +947,7 @@ void eval_shapes_and_grads<Domain2d>
 			"but other face types are not supported by this method.");
 	}
 }
+#endif
 
 
 template <typename TDomain>
@@ -750,16 +996,25 @@ NeckRecorderBase::NeckRecorderBase()
 template <typename TDomain, typename TAlgebra>
 NeckRecorder<TDomain, TAlgebra>::NeckRecorder(SmartPtr<ApproximationSpace<TDomain> > approx)
 : m_spApprox(approx),
+  m_spConvShape(new ConvectionShapesNoUpwind<dim>),
   m_siCyt(-1),
   m_vDiffConst(4),
+  m_vConvConst(4),
   m_temp(298.15),
+  m_bIndividualCurrents(false),
   bPreparedCurrent(false),
-  bPreparedPot(false)
+  bPreparedPot(false),
+  m_bSsIsRegular(false)
 {
 	m_vDiffConst[_K_] = 1.96e-9;
 	m_vDiffConst[_NA_] = 1.33e-9;
 	m_vDiffConst[_CL_] = 2.03e-9;
 	m_vDiffConst[_A_] = 2.0e-9;
+
+	m_vConvConst[_K_] = -m_vDiffConst[_K_] * F/(R*m_temp);
+	m_vConvConst[_NA_] = -m_vDiffConst[_NA_] * F/(R*m_temp);
+	m_vConvConst[_CL_] = m_vDiffConst[_CL_] * F/(R*m_temp);
+	m_vConvConst[_A_] = m_vDiffConst[_A_] * F/(R*m_temp);
 }
 
 
@@ -792,9 +1047,24 @@ void NeckRecorder<TDomain, TAlgebra>::set_cytosolic_subset(const std::string& ss
 
 
 template <typename TDomain, typename TAlgebra>
+void NeckRecorder<TDomain, TAlgebra>::
+set_upwind(SmartPtr<IConvectionShapes<TDomain::dim> > spUpwind)
+{
+	m_spConvShape = spUpwind;
+}
+
+
+template <typename TDomain, typename TAlgebra>
 void NeckRecorder<TDomain, TAlgebra>::set_diffusion_constants(const std::vector<number>& diffConsts)
 {
 	m_vDiffConst = diffConsts;
+}
+
+
+template <typename TDomain, typename TAlgebra>
+void NeckRecorder<TDomain, TAlgebra>::set_convection_constants(const std::vector<number>& convConsts)
+{
+	m_vConvConst = convConsts;
 }
 
 
@@ -807,13 +1077,20 @@ void NeckRecorder<TDomain, TAlgebra>::set_temperature(number t)
 
 
 template <typename TDomain, typename TAlgebra>
+void NeckRecorder<TDomain, TAlgebra>::set_record_individual_currents(bool indivCurr)
+{
+	m_bIndividualCurrents = indivCurr;
+}
+
+
+template <typename TDomain, typename TAlgebra>
 void NeckRecorder<TDomain, TAlgebra>::prepare
 (
 	std::vector<std::vector<IntegrationVolume> >& integData,
 	bool useSCVFMode
 )
 {
-	typedef typename domain_traits<TDomain::dim>::element_type elem_type;
+	typedef typename domain_traits<dim>::element_type elem_type;
 
 	// surface dof distro
 	SmartPtr<DoFDistribution> dd = m_spApprox->dof_distribution(GridLevel());
@@ -829,10 +1106,8 @@ void NeckRecorder<TDomain, TAlgebra>::prepare
 	typedef typename DoFDistribution::traits<elem_type>::const_iterator vol_iter_type;
 	vol_iter_type it = dd->template begin<elem_type>(m_siCyt);
 	vol_iter_type it_end = dd->template end<elem_type>(m_siCyt);
-	size_t volCnt = 0;
 	for (; it != it_end; ++it)
 	{
-		++volCnt;
 		elem_type* vol = *it;
 
 		// loop measurement zones
@@ -842,14 +1117,25 @@ void NeckRecorder<TDomain, TAlgebra>::prepare
 			number thresh = m_vMeasCoords[mz];
 
 			// check for intersection with measurement zone manifold;
-			int cornerState[domain_traits<TDomain::dim>::MaxNumVerticesOfElem]; // can be re-used later on
-			if (!check_for_intersection<TDomain>(vol, thresh, cornerState, aaPos))
+			int cornerState[domain_traits<dim>::MaxNumVerticesOfElem]; // can be re-used later on
+			bool elemIntersected = false;
+			if (useSCVFMode)
+			{
+				elemIntersected = check_for_hanging_intersection<TDomain>(
+					vol, m_spApprox->domain(), thresh, m_siCyt, cornerState);
+			}
+			else
+				elemIntersected = check_for_intersection<TDomain>(vol, thresh, aaPos, cornerState);
+
+			if (!elemIntersected)
 				continue;
+
 
 			// prepare intermediate structure
 			// that allows fast computation of flux once grid function is given
 			integData[mz].resize(integData[mz].size() + 1);
 			IntegrationVolume& iv = integData[mz].back();
+			iv.elem = vol;
 
 			if (!useSCVFMode)
 			{
@@ -884,13 +1170,13 @@ void NeckRecorder<TDomain, TAlgebra>::prepare
 			else
 			{
 				// determine quadrature weights and points in element
-				const bool ssIsRegular = SubsetIsRegularGrid(*m_spApprox->domain()->subset_handler(), m_siCyt);
+				m_bSsIsRegular = SubsetIsRegularGrid(*m_spApprox->domain()->subset_handler(), m_siCyt);
 				try
 				{
-					if (ssIsRegular)
-						integration_points_of_approximating_scvfs<TDomain, false>(iv, vol, thresh, m_spApprox->domain());
+					if (m_bSsIsRegular)
+						integration_points_of_approximating_scvfs<TDomain, false>(iv, vol, thresh, cornerState, m_spApprox->domain());
 					else
-						integration_points_of_approximating_scvfs<TDomain, true>(iv, vol, thresh, m_spApprox->domain());
+						integration_points_of_approximating_scvfs<TDomain, true>(iv, vol, thresh, cornerState, m_spApprox->domain());
 				}
 				UG_CATCH_THROW("Exception during determination of integration points on approximating SCVFs.");
 			}
@@ -902,6 +1188,169 @@ void NeckRecorder<TDomain, TAlgebra>::prepare
 	}
 }
 
+
+
+template <typename TDomain, typename TAlgebra>
+template <bool hanging>
+NeckRecorder<TDomain, TAlgebra>::wrap_ccs<hanging>::wrap_ccs
+(
+	std::vector<std::vector<number> >* _convShapes,
+	const NeckRecorderBase::IntegrationVolume& _iv,
+	number _thresh,
+	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > _u,
+	NeckRecorder<TDomain, TAlgebra>* _nr
+)
+: convShapes(_convShapes), iv(_iv), thresh(_thresh), u(_u), nr(_nr)
+{}
+
+template <typename TDomain, typename TAlgebra>
+template <bool hanging>
+template <typename TElem>
+void NeckRecorder<TDomain, TAlgebra>::wrap_ccs<hanging>::operator() (TElem&)
+{
+	TElem* castElem = dynamic_cast<TElem*>(iv.elem);
+	if (castElem)
+		nr->template compute_convection_shapes_elem<TElem, hanging>(convShapes, iv, thresh, castElem, u);
+}
+
+
+template <typename TDomain, typename TAlgebra>
+void NeckRecorder<TDomain, TAlgebra>::compute_convection_shapes
+(
+	std::vector<std::vector<number> >* convShapes,
+	const IntegrationVolume& iv,
+	number thresh,
+	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u
+)
+{
+	typedef typename domain_traits<TDomain::dim>::DimElemList ElemList;
+	if (!m_bSsIsRegular)
+		boost::mpl::for_each<ElemList>(wrap_ccs<true>(convShapes, iv, thresh, u, this));
+	else
+		boost::mpl::for_each<ElemList>(wrap_ccs<false>(convShapes, iv, thresh, u, this));
+}
+
+
+template <typename TDomain, typename TAlgebra>
+template <typename TElem, bool hanging>
+void NeckRecorder<TDomain, TAlgebra>::compute_convection_shapes_elem
+(
+	std::vector<std::vector<number> >* convShapes,
+	const IntegrationVolume& iv,
+	number thresh,
+	TElem* elem,
+	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u
+)
+{
+	ConstSmartPtr<TDomain> dom = m_spApprox->domain();
+
+	// get FV1 geometry for element
+	std::vector<typename TDomain::position_type> vCornerCoords;
+	CollectCornerCoordinates(vCornerCoords, elem, dom->position_accessor(), false);
+
+	typedef typename ChooseProperFVGeom<TDomain::dim, TElem, hanging, 1>::FVGeom fvgeom_type;
+	static fvgeom_type& geo = GeomProvider<fvgeom_type>::get();
+	try {geo.update(elem, &vCornerCoords[0], dom->subset_handler().get());}
+	UG_CATCH_THROW("Failed creating FV1Geometry for element.");
+
+	// init convection shapes on volume
+	UG_COND_THROW(!m_spConvShape->template set_geometry_type<fvgeom_type>(geo),
+		"Cannot init upwind scheme for element type.");
+
+	// compute velocity at IPs
+	const size_t nSCVF = geo.num_scvf_ips();
+	std::vector<MathVector<dim> > velocityAtIPs(nSCVF);
+	for (size_t s = 0; s < nSCVF; ++s)
+	{
+		const typename fvgeom_type::SCVF& scvf = geo.scvf(s);
+		MathVector<dim>& vel = velocityAtIPs[s] = 0.0;
+
+		const size_t nSh = scvf.num_sh();
+		UG_COND_THROW(nSh != iv.vDofIndex.size(),
+			"Number of shape functions for SCVF (" << nSh << ") does not match number of DoFs "
+			"for potential function in IntegrationVolume (" << iv.vDofIndex.size() << ").")
+		for (size_t sh = 0; sh < nSh; ++sh)
+			VecScaleAppend(vel, DoFRef(*u, iv.vDofIndex[sh][_PHI_]), scvf.global_grad(sh));
+	}
+
+	// compute convection shapes
+	std::vector<MathVector<dim> > scaledVelocityAtIPs(nSCVF);
+	for (size_t f = 0; f < 4; ++f)
+	{
+		// scale velocity according to ion species
+		for (size_t s = 0; s < nSCVF; ++s)
+			VecScale(scaledVelocityAtIPs[s], velocityAtIPs[s], m_vConvConst[f]);
+
+		// compute the actual convection shapes
+		UG_COND_THROW(!m_spConvShape->update(&geo, &scaledVelocityAtIPs[0], NULL, false),
+				"Cannot compute convection shapes.");
+
+		// copy into given structure
+		std::vector<std::vector<number> >& functionConvShapes = convShapes[f];
+		if (functionConvShapes.size() < nSCVF)
+			functionConvShapes.resize(nSCVF);
+		size_t nCutEdges = 0;
+		for (size_t s = 0; s < nSCVF; ++s)
+		{
+			const typename fvgeom_type::SCVF& scvf = geo.scvf(s);
+			size_t from = scvf.from();
+			size_t to = scvf.to();
+
+			// find out whether current scvf is part of approximating manifold;
+			// this is the case if the corners of the corresponding edge are on different sides
+
+			const bool fromIsHangingInCoarse = from >= elem->num_vertices();
+			const bool toIsHangingInCoarse = to >= elem->num_vertices();
+
+			const typename TDomain::position_type& coCoFrom = geo.global_node_position(from);
+			const typename TDomain::position_type& coCoTo = geo.global_node_position(to);
+			const number refLenSq = VecDistanceSq(coCoFrom, coCoTo);
+
+			int coStFrom = 0;
+			int coStTo = 0;
+
+			if (!fromIsHangingInCoarse)
+				// natural corner of the elem
+				coStFrom = hangingCornerState(elem->vertex(from), m_spApprox->domain(), thresh);
+			else
+				// hanging corner in coarse elem
+				coStFrom = hangingCornerStateCoarse(coCoFrom, thresh, elem, dom, refLenSq);
+
+			if (!toIsHangingInCoarse)
+				// natural corner of the elem
+				coStTo = hangingCornerState(elem->vertex(to), m_spApprox->domain(), thresh);
+			else
+				// hanging corner in coarse elem
+				coStTo = hangingCornerStateCoarse(coCoTo, thresh, elem, dom, refLenSq);
+
+
+			number weight = 0.0;
+			if (coStFrom == CS_BELOW && coStTo == CS_ABOVE)
+				weight = 1.0;
+			else if (coStFrom == CS_ABOVE && coStTo == CS_BELOW)
+				weight = -1.0;
+			else if ((coStFrom == CS_BELOW && coStTo == (CS_BELOW | CS_ABOVE))
+				|| (coStFrom == (CS_BELOW | CS_ABOVE) && coStTo == CS_ABOVE))
+				weight = 0.5;
+			else if ((coStFrom == (CS_BELOW | CS_ABOVE) && coStTo == CS_BELOW)
+				|| (coStFrom == CS_ABOVE && coStTo == (CS_BELOW | CS_ABOVE)))
+				weight = -0.5;
+
+			if (weight == 0.0)
+				continue;
+
+
+			std::vector<number>& scvfConvShapes = functionConvShapes[nCutEdges];
+			++nCutEdges;
+
+			size_t nSh = scvf.num_sh();
+			if (scvfConvShapes.size() < nSh)
+				scvfConvShapes.resize(nSh);
+			for (size_t sh = 0; sh < nSh; ++sh)
+				scvfConvShapes[sh] = m_spConvShape->operator()(s, sh);
+		}
+	}
+}
 
 
 template <typename TDomain, typename TAlgebra>
@@ -923,8 +1372,6 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 	if (ext == "")
 		ext = "dat";
 
-	const number vr = F/(R*m_temp);
-
 	// prepare if not yet done
 	if (!bPreparedCurrent)
 	{
@@ -932,11 +1379,34 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 		bPreparedCurrent = true;
 	}
 
+#if NECK_RECORDER_DEBUG
+	// construct outFile name for fluxes
+	std::ostringstream offluxes(fnWoExt, std::ios::app);
+	offluxes << "_fluxes.csv";
+
+	// open file
+	std::ofstream outFileFluxes(offluxes.str().c_str(), std::ios_base::out | std::ios_base::app);
+	UG_COND_THROW(!outFileFluxes.is_open(), "File '" << offluxes.str() << "' could not be opened for writing.");
+
+	// write header
+	std::string header = std::string("coordX");
+	if (dim >= 2) header.append(std::string(",coordY"));
+	if (dim >= 3) header.append(std::string(",coordZ"));
+	header.append(std::string(",fluxX"));
+	if (dim >= 2) header.append(std::string(",fluxY"));
+	if (dim >= 3) header.append(std::string(",fluxZ"));
+	outFileFluxes << header << std::endl;
+#endif
+
 	// loop measurement zones
+	std::vector<std::vector<std::vector<number> > > convShapes(4);
 	const size_t nMZ = m_vIntegrationDataCurrent.size();
 	for (size_t mz = 0; mz < nMZ; ++mz)
 	{
-		number current = 0.0;
+		number currentK = 0.0;
+		number currentNa = 0.0;
+		number currentCl = 0.0;
+		number currentA = 0.0;
 
 		// loop intersecting volumes
 		const size_t nIV = m_vIntegrationDataCurrent[mz].size();
@@ -945,67 +1415,103 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 			const IntegrationVolume& iv = m_vIntegrationDataCurrent[mz][v];
 			const size_t nCo = iv.vDofIndex.size();
 
+			// compute upwinding convection shapes
+			compute_convection_shapes(&convShapes[0], iv, m_vMeasCoords[mz], u);
+
 			// loop IPs
 			const size_t nIP = iv.vIPData.size();
+			UG_COND_THROW(nIP > convShapes[_K_].size(),
+				"Number of IPs in IntegrationVolume (" << nIP << ") does not match "
+				"number of SCVF IPs of convection shapes (" << convShapes[_K_].size()
+				<< ") on " << ElementDebugInfo(*m_spApprox->domain()->grid(), iv.elem) << "\b.");
+
 			for (size_t ip = 0; ip < nIP; ++ip)
 			{
+#if NECK_RECORDER_DEBUG
+				// get coordinates and normal
+				typename TDomain::position_accessor_type::ValueType center;
+				center[0] = iv.vIPData[ip].pos[0];
+				center[1] = iv.vIPData[ip].pos[1];
+#endif
+
 				const IPData& ipd = iv.vIPData[ip];
 
 				// construct function values and gradients at IP (by looping corners)
-				number gradPhi = 0.0;
 				number gradK = 0.0;
 				number gradNa = 0.0;
 				number gradCl = 0.0;
 				number gradA = 0.0;
 
-				number valK = 0.0;
-				number valNa = 0.0;
-				number valCl = 0.0;
-				number valA = 0.0;
+				number elFluxK = 0.0;
+				number elFluxNa = 0.0;
+				number elFluxCl = 0.0;
+				number elFluxA = 0.0;
 
 				for (size_t co = 0; co < nCo; ++co)
 				{
 					const std::vector<DoFIndex>& di = iv.vDofIndex[co];
 					const number grad = ipd.vGradZ[co];
-					const number shape = ipd.vShapes[co];
 
-					gradPhi += grad * DoFRef(*u, di[_PHI_]);
 					gradK   += grad * DoFRef(*u, di[_K_]);
 					gradNa  += grad * DoFRef(*u, di[_NA_]);
 					gradCl  += grad * DoFRef(*u, di[_CL_]);
 					gradA   += grad * DoFRef(*u, di[_A_]);
 
-					valK   += shape * DoFRef(*u, di[_K_]);
-					valNa  += shape * DoFRef(*u, di[_NA_]);
-					valCl  += shape * DoFRef(*u, di[_CL_]);
-					valA   += shape * DoFRef(*u, di[_A_]);
+					elFluxK  += convShapes[_K_][ip][co] * DoFRef(*u, di[_K_]);
+					elFluxNa += convShapes[_NA_][ip][co] * DoFRef(*u, di[_NA_]);
+					elFluxCl += convShapes[_CL_][ip][co] * DoFRef(*u, di[_CL_]);
+					elFluxA  += convShapes[_A_][ip][co] * DoFRef(*u, di[_A_]);
 				}
 
 				// construct current density
-				const number currK = - m_vDiffConst[_K_] * (gradK + vr*valK*gradPhi);
-				const number currNa = - m_vDiffConst[_NA_] * (gradNa + vr*valNa*gradPhi);
-				const number currCl = - m_vDiffConst[_CL_] * (gradCl - vr*valCl*gradPhi);
-				const number currA = - m_vDiffConst[_A_] * (gradA - vr*valA*gradPhi);
+				const number currK = - m_vDiffConst[_K_] * gradK + elFluxK;
+				const number currNa = - m_vDiffConst[_NA_] * gradNa + elFluxNa;
+				const number currCl = - m_vDiffConst[_CL_] * gradCl + elFluxCl;
+				const number currA = - m_vDiffConst[_A_] * gradA + elFluxA;
 
-				current += ipd.weight * ipd.detJ * F * (currK + currNa - (currCl + currA));
+				currentK += ipd.weight * ipd.detJ * currK;
+				currentNa += ipd.weight * ipd.detJ * currNa;
+				currentCl -= ipd.weight * ipd.detJ * currCl;
+				currentA -= ipd.weight * ipd.detJ * currA;
+
+#ifdef NECK_RECORDER_DEBUG
+				for (size_t d = 0; d < dim; ++d)
+					outFileFluxes << center[d] << ",\t";
+
+				outFileFluxes << "0.0,\t" << scale * ipd.weight * ipd.detJ * (currK) << "\n";
+				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (currNa) << ",\t";
+				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (-currCl) << ",\t";
+				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (-currA) << "\n";
+#endif
 			}
 		}
 
-		current *= scale;
+		currentK *= scale;
+		currentNa *= scale;
+		currentCl *= scale;
+		currentA *= scale;
 
 #ifdef UG_PARALLEL
 		// sum over processes
 		if (pcl::NumProcs() > 1)
 		{
 			pcl::ProcessCommunicator com;
-			number local = current;
-			com.allreduce(&local, &current, 1, PCL_DT_DOUBLE, PCL_RO_SUM);
+			number local[4] = {currentK, currentNa, currentCl, currentA};
+			number global[4] = {0.0, 0.0, 0.0, 0.0};
+			com.allreduce(&local, &global, 4, PCL_DT_DOUBLE, PCL_RO_SUM);
+
+			currentK = global[0];
+			currentNa = global[1];
+			currentCl = global[2];
+			currentA = global[3];
 		}
 
 		// check if this proc is output proc
 		if (GetLogAssistant().is_output_process())
 #endif
 		{
+			number current = currentK + currentNa + currentCl + currentA;
+
 			// construct outFile name
 			std::ostringstream ofnss(fnWoExt, std::ios::app);
 			ofnss << "_" << m_vMeasZoneNames[mz] << "." << ext;
@@ -1015,7 +1521,18 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 			UG_COND_THROW(!outFile.is_open(), "File '" << ofnss.str() << "' could not be opened for writing.");
 
 			// write record
-			try {outFile << time << "\t" << current << "\n";}
+			try
+			{
+				outFile << time << "\t" << current;
+				if (m_bIndividualCurrents)
+				{
+					outFile << "\t" << currentK;
+					outFile << "\t" << currentNa;
+					outFile << "\t" << currentCl;
+					outFile << "\t" << currentA;
+				}
+				outFile << "\n";
+			}
 			UG_CATCH_THROW("Output file " << ofnss.str() << " could not be written to.");
 
 			// close file
@@ -1024,9 +1541,16 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 	}
 
 #if NECK_RECORDER_DEBUG
+	outFileFluxes.close();
+
 	SubsetHandler sh(testGrid);
 	std::ostringstream ofnss(fnWoExt, std::ios::app);
-	ofnss << "_testGrid" << ".ugx";
+	ofnss << "_testGrid";
+#ifdef UG_PARALLEL
+	if (pcl::NumProcs() > 1)
+		ofnss << "_p" << pcl::ProcRank();
+#endif
+	ofnss << ".ugx";
 	UG_COND_THROW(!SaveGridToFile(testGrid, sh, ofnss.str().c_str(), TestAttachment<TDomain>::aPosTest),
 		"Saving grid to file failed.");
 #endif
@@ -1039,7 +1563,8 @@ void NeckRecorder<TDomain, TAlgebra>::record_potential
 (
 	const std::string& fileName,
 	number time,
-	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u
+	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u,
+	number scale
 )
 {
 	const std::string fnWoExt = FilenameAndPathWithoutExtension(fileName);
@@ -1084,6 +1609,8 @@ void NeckRecorder<TDomain, TAlgebra>::record_potential
 				area += ipd.weight * ipd.detJ;
 			}
 		}
+
+		potInt *= scale;
 
 #ifdef UG_PARALLEL
 		// sum over processes

@@ -273,9 +273,13 @@ static void DomainAlgebra(Registry& reg, string grp)
 				"add a measurement manifold at given z location", "")
 			.add_method("set_cytosolic_subset", &T::set_cytosolic_subset, "", "cytosolic subset name",
 				"set the subset that recordings are to be taken in", "")
+			.add_method("set_upwind", &T::set_upwind, "", "upwind", "", "")
 			.add_method("set_diffusion_constants", &T::set_diffusion_constants, "",
 				"constants in the order K, Na, Cl, A", "set diffusion constants", "")
+			.add_method("set_convection_constants", &T::set_convection_constants, "",
+				"constants in the order K, Na, Cl, A", "set convection constants", "")
 			.add_method("set_temperature", &T::set_temperature, "", "temperature", "set temperature", "")
+			.add_method("set_record_individual_currents", &T::set_record_individual_currents, "", "", "", "")
 			.add_method("record_current", &T::record_current, "", "output file name#time#solution#scale factor",
 				"record current through measurement manifold to file (each measurement zone separately)", "")
 			.add_method("record_potential", &T::record_potential, "", "output file name#time#solution",
