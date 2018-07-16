@@ -110,11 +110,6 @@ void importSolution
 );
 
 
-template <typename TDomain>
-void mark_global(SmartPtr<IRefiner> refiner, SmartPtr<ApproximationSpace<TDomain> > approx);
-
-
-
 #if 0
 // does not work: would (at least) need implementation of TestLayout for multi_level_layout_tag
 #ifdef UG_PARALLEL

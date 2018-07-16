@@ -32,7 +32,6 @@ set(SOURCES nernst_planck_plugin.cpp
             edl_1d.cpp
             interface1d_fv.cpp
             order.cpp
-            charge_marking.cpp
             intf_refMarkAdjuster.cpp
             extension_refMarkAdjuster.cpp
             domain1d_solution_adjuster.cpp
