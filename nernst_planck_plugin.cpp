@@ -32,6 +32,7 @@
 #ifdef UG_PARALLEL
 	#include "redistribution_util.h"                            // for redistribute
 #endif
+#include "refinement_error_estimator.h"                     // for RefinementErrorEstimator
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
 #ifdef __APPLE__
 	#include "mem_info.h"
@@ -288,6 +289,20 @@ static void DomainAlgebra(Registry& reg, string grp)
 				"record averaged concentrations to file (each measurement zone separately)", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name+suffix, name, tag);
+	}
+
+	// RefinementErrorEstimator
+	{
+		typedef RefinementErrorEstimator<TDomain, TAlgebra> T;
+		string nameBase = string("RefinementErrorEstimator");
+		string name = nameBase;	name.append(suffix);
+		reg.add_class_<T>(name, grp)
+			.add_constructor()
+			.add_method("compute_elementwise_errors", &T::compute_elementwise_errors, "", "uFine # uCoarse # cmp", "", "")
+			.add_method("mark_with_strategy", &T::mark_with_strategy, "", "refiner # strategy", "", "")
+			.add_method("error_grid_function", &T::error_grid_function, "", "domain", "", "")
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, nameBase, tag);
 	}
 }
 

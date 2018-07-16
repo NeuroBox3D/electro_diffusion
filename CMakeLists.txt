@@ -41,6 +41,7 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp_smoother.cpp
             redistribution_util.cpp
             neck_recorder.cpp
+            refinement_error_estimator.cpp
    )
    
 if (APPLE)
