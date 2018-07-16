@@ -20,6 +20,8 @@
 
 #include "interface1d_fv.h"                                    // for IInterface1D
 
+#include "config.h"  // contains cmake-configured defines,
+                     // esp. whether Parmetis is built along
 
 namespace ug {
 
@@ -50,7 +52,9 @@ namespace nernst_planck {
 template <typename TDomain>
 class PNPDistroManager
 : public DistroAdjuster,
+#ifdef NPParmetis
   public parmetis::AnisotropyProtector<TDomain>,
+#endif
   public DualGraphNeighborCollector<typename grid_dim_traits<TDomain::dim>::grid_base_object>
 {
 	public:

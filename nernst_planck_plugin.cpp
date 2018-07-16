@@ -11,6 +11,7 @@
 #include "lib_disc/function_spaces/grid_function.h"         // for GridFunction
 
 #include "charge_marking.h"                                 // for ChargeMarking
+#include "config.h"                                         // for #defines
 #include "domain1d_solution_adjuster.h"                     // for Domain1dSolutionAdjuster
 #include "edl_1d.h"                                         // for EDLSimulation
 #include "electric_circuit.h"                               // for ElectricCircuit
@@ -28,7 +29,9 @@
 #include "pnp1d_fv1.h"                                      // for PNP1D_FV1
 #include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
 #include "pnp_upwind.h"                                     // for PNPUpwind
-#include "redistribution_util.h"                            // for redistribute
+#ifdef UG_PARALLEL
+	#include "redistribution_util.h"                            // for redistribute
+#endif
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
 
 
@@ -381,10 +384,14 @@ static void Domain(Registry& reg, string grp)
 	// PNPDistroAdjuster
 	{
 		typedef PNPDistroManager<TDomain> T;
-		typedef parmetis::AnisotropyProtector<TDomain> TBase;
 		string nameBase = string("PNPDistroManager");
 		string name = nameBase;	name.append(suffix);
+#ifdef NPParmetis
+		typedef parmetis::AnisotropyProtector<TDomain> TBase;
 		reg.add_class_<T, TBase>(name, grp)
+#else
+		reg.add_class_<T>(name, grp)
+#endif
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >)>("approx space")
 			.add_method("add_interface", &T::add_interface, "", "interface", "", "")
 			.set_construct_as_smart_pointer(true);
@@ -414,7 +421,9 @@ static void Domain(Registry& reg, string grp)
 
 	reg.add_function("add_extension_ref_mark_adjuster", &add_extension_ref_mark_adjuster<TDomain>, grp.c_str(), "", "", "");
 
+#ifdef UG_PARALLEL
 	reg.add_function("redistribute", &redistribute<TDomain>, grp.c_str(), "", "", "", "");
+#endif
 
 	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }

@@ -36,6 +36,8 @@
 #include "lib_grid/grid/grid_base_objects.h"                                       // for CustomVertexGroup, Vertex, Edge (ptr only), Face (ptr only)
 #ifdef UG_PARALLEL
 	#include "lib_grid/parallelization/parallel_refinement/parallel_refinement.h"  // for ParallelGlobalRefiner_MultiGrid
+#else
+	#include "lib_grid/refinement/global_multi_grid_refiner.h"                     // for GlobalMultiGridRefiner
 #endif
 #include "lib_grid/multi_grid.h"                                                   // for MultiGrid
 #include "lib_grid/tools/selector_grid.h"                                          // for Selector

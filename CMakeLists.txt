@@ -46,6 +46,10 @@ if (PARALLEL)
 	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp) 
 endif(PARALLEL)
 
+if (Parmetis)
+	set (NPParmetis ON)
+endif (Parmetis)
+
 
 # error if tetgen libs/includes are not found
 if (NPTetgen)
@@ -63,10 +67,10 @@ if (NPTetgen)
 endif (NPTetgen)
 
 
-# This will copy the configurable file tetgen_config_cmake.h to
-# the final configuration header tetgen_config.h,
+# This will copy the configurable file config_cmake.h to
+# the final configuration header config.h,
 # setting the #defines as given by the current CMake variables.
-configure_file(tetgen_config_cmake.h tetgen_config.h)
+configure_file(config_cmake.h config.h)
 
 
 if(buildEmbeddedPlugins)
@@ -109,6 +113,11 @@ else(buildEmbeddedPlugins)
 	
 	# add MPM to linker (importCommand, remove that in time)
 	set (additionalLibs ${additionalLibs} MembranePotentialMapping)
+	
+	# add Parmetis to linker (if built alongside)
+	if (Parmetis)
+		set (additionalLibs ${additionalLibs} Parmetis)
+	endif (Parmetis)
 	
 	target_link_libraries(nernst_planck ug4 ${additionalLibs})
 endif(buildEmbeddedPlugins)

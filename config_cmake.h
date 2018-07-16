@@ -17,5 +17,8 @@
 	#endif
 #endif
 
+#cmakedefine NPParmetis
+
+
 
 #endif // UG__PLUGINS__NERNST_PLANCK__TETGEN_CONFIG_H

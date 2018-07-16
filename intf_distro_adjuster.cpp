@@ -116,7 +116,10 @@ void PNPDistroManager<TDomain>::collect_neighbors
 
 template <typename TDomain>
 PNPDistroManager<TDomain>::PNPDistroManager(SmartPtr<ApproximationSpace<TDomain> > approx)
-: parmetis::AnisotropyProtector<TDomain>(approx->domain()),
+:
+#ifdef NPParmetis
+  parmetis::AnisotropyProtector<TDomain>(approx->domain()),
+#endif
   m_approx(approx), m_dom(approx->domain()), m_sh(m_dom->subset_handler())
 {
 	// set this class as its own neighbor collector

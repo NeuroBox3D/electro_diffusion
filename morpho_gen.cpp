@@ -61,7 +61,7 @@
 #include "lib_grid/tools/selector_grid_elem.h"                                          // for FaceSelector
 #include "lib_grid/tools/subset_handler_grid.h"                                         // for SubsetHandler
 
-#include "tetgen_config.h"
+#include "config.h"
 #ifdef TETGEN_15_ENABLED
 	#include "tetgen.h"
 #endif
