@@ -300,6 +300,7 @@ static void Domain(Registry& reg, string grp)
 					 "", "approximation space", "Re-orders DoFs in all the approxSpace's DoFDistros "
 					 "according to lexicographical ordering as proposed by Rose et al.");
 
+#if 0
 	// 1D PNP FV1
 	{
 		typedef PNP1D_FV1<TDomain> T;
@@ -346,6 +347,7 @@ static void Domain(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "PNP1D_FV", tag);
 	}
+#endif
 
 	// PNPUpwind
 	{
