@@ -10,11 +10,13 @@
 #include <boost/mpl/for_each.hpp>                                    // for for_each
 #include <limits>                                                    // for numeric_...
 #include <fstream>                                                   // for ofstream
+#include <mpi.h>                                                     // for MPI_File_write ...
 
 #include "common/error.h"                                            // for UG_COND_...
 #include "common/math/math_vector_matrix/math_matrix.h"              // for MathMatrix
 #include "common/math/math_vector_matrix/math_vector_functions.h"    // for VecScale...
 #include "lib_algebra/parallelization/parallel_storage_type.h"       // for Parallel...
+#include "lib_algebra/parallelization/parallelization_util.h"        // for MatMakeConsistentOverlap0
 #include "lib_disc/common/groups_util.h"                             // for CreateFunctionIndexMapping...
 #include "lib_disc/common/multi_index.h"                             // for DoFIndex
 #include "lib_disc/dof_manager/dof_distribution.h"                   // for DoFDistr...
@@ -65,7 +67,7 @@ FluxExporter<TGridFunction>::FluxExporter
   m_diffConst(std::numeric_limits<number>::quiet_NaN()),
   m_convConst(std::numeric_limits<number>::quiet_NaN()),
   m_quadOrder(-1),
-  m_bWriteFluxMap(false),
+  m_bWriteFluxMatrix(false),
   m_hangingConstraintFlux(SPNULL),
   m_hangingConstraintVol(SPNULL),
   m_spConvShape(new ConvectionShapesNoUpwind<dim>)
@@ -111,6 +113,7 @@ void FluxExporter<TGridFunction>::set_hanging_constraint(SmartPtr<IDomainConstra
 	{
 		m_hangingConstraintFlux = make_sp(new OneSideP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
 		m_hangingConstraintVol = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
+		m_hangingConstraintBoxFlux = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
 		return;
 	}
 
@@ -120,6 +123,7 @@ void FluxExporter<TGridFunction>::set_hanging_constraint(SmartPtr<IDomainConstra
 	{
 		m_hangingConstraintFlux = make_sp(new SymP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
 		m_hangingConstraintVol = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
+		m_hangingConstraintBoxFlux = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
 		return;
 	}
 
@@ -240,7 +244,9 @@ void FluxExporter<TGridFunction>::write_flux
 	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
 
 	// calculate flux as vector-valued grid function
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux = calc_flux(scale_factor);
+	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux;
+	try {flux = calc_flux(scale_factor);}
+	UG_CATCH_THROW("Error during flux calculation.")
 
 	// export to vtk
 	std::vector<std::string> flux_cmp_names(dim);
@@ -250,8 +256,9 @@ void FluxExporter<TGridFunction>::write_flux
 	vtkOutput->clear_selection();
 	vtkOutput->select(flux_cmp_names, fluxName.c_str());
 
-	vtk_export_ho<GridFunction<dom_type, CPUBlockAlgebra<dim> >, dim>
-		(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);
+	try {vtk_export_ho<GridFunction<dom_type, CPUBlockAlgebra<dim> >, dim>
+		(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);}
+	UG_CATCH_THROW("Error during vtk export.")
 
 	//size_t sgSz = m_sg.size();
 	//for (size_t s = 0; s < sgSz; ++s)
@@ -283,59 +290,226 @@ void FluxExporter<TGridFunction>::write_box_fluxes
 	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
 
 	// set flag for writing to flux map
-	m_bWriteFluxMap = true;
+	m_bWriteFluxMatrix = true;
 
-	m_fluxMap.clear();
+	// resize matrix
+	SmartPtr<ApproximationSpace<dom_type> > approxFlux =
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 1)));
+	std::vector<std::string> vol_cmp_names(1);
+	vol_cmp_names[0] = "flux";
+	try {approxFlux->add(vol_cmp_names, m_lfeid, m_vSubset);}
+	UG_CATCH_THROW("Failed to add functions to approximation space on specified subsets.");
+	approxFlux->init_top_surface();
+	m_ddBoxFluxes = approxFlux->dd(GridLevel());
+	m_fluxMatrix.resize_and_clear(m_ddBoxFluxes->num_indices(), m_ddBoxFluxes->num_indices());
 
-	// calculate flux as vector-valued grid function (ignore return value)
+	// calculate matrix entries
 	calc_flux(scale_factor);
+
+	// apply hanging constraint
+	if (m_hangingConstraintBoxFlux.valid())
+	{
+		m_hangingConstraintBoxFlux->set_approximation_space(approxFlux);
+		m_hangingConstraintBoxFlux->set_ass_tuner(make_sp(new AssemblingTuner<CPUAlgebra>())); // dummy
+		GridFunction<dom_type, CPUAlgebra> dummy(approxFlux, false); // not needed in adjust_jacobian
+		m_hangingConstraintBoxFlux->adjust_jacobian(m_fluxMatrix, dummy, m_ddBoxFluxes, CT_HANGING);
+	}
+
+	// make consistent
+	MatMakeConsistentOverlap0(m_fluxMatrix);
+
 
 // save flux map contents to .csv file
 
+	// first: associate a vertex with each DoF
+	std::map<size_t, Vertex*> dof2Vrt;
+	std::vector<DoFIndex> vInd;
+	SmartPtr<MultiGrid> mg = m_u->approx_space()->domain()->grid();
+	const size_t nSS = m_sg.size();
+	for (size_t s = 0; s < nSS; ++s)
+	{
+		const int si = m_sg[s];
+		it_type it = m_ddBoxFluxes->template begin<elem_type>(si);
+		it_type itEnd = m_ddBoxFluxes->template end<elem_type>(si);
+		for (; it != itEnd; ++it)
+		{
+			elem_type* elem = *it;
+			const size_t nVrt = elem->num_vertices();
+			for (size_t v = 0; v < nVrt; ++v)
+			{
+				m_ddBoxFluxes->inner_dof_indices(elem->vertex(v), 0, vInd, true);
+				UG_COND_THROW(vInd.size() != 1, "Not exactly one DoF index for vertex, "
+					"instead " << vInd.size() << ".");
+				dof2Vrt[vInd[0][0]] = elem->vertex(v);
+			}
+		}
+	}
+
+	// get position accessor
+	const typename dom_type::position_accessor_type& aaPos =
+		m_u->approx_space()->domain()->position_accessor();
+
 	// construct name
-	#ifdef UG_PARALLEL
-		if (pcl::NumProcs() > 1)
-			AppendCounterToString(filename, "_p", pcl::ProcRank(), pcl::NumProcs() - 1);
-	#endif
 	AppendCounterToString(filename, "_t", step);
 	filename.append(".csv");
 
-	std::ofstream outFile;
-	outFile.open(filename.c_str(), std::ios_base::out);
+	std::string header;
 
-	// write fluxes
-	try
+#ifdef UG_PARALLEL
+	if (pcl::NumProcs() > 1)
 	{
-		// write head
-		std::string header = std::string("coordX");
-		if (dim >= 2) header.append(std::string(",coordY"));
-		if (dim >= 3) header.append(std::string(",coordZ"));
-		header.append(std::string(",fluxX"));
-		if (dim >= 2) header.append(std::string(",fluxY"));
-		if (dim >= 3) header.append(std::string(",fluxZ"));
-		outFile << header << std::endl;
+		// FIXME: write larger chunks
+		// (possibly only one per proc and in a collective call)
+		pcl::ProcessCommunicator pc;
+		MPI_Status status;
+		MPI_Comm m_mpiComm = pc.get_mpi_communicator();
+		MPI_File fh;
 
-		// write vectors
-		typename FluxMap::const_iterator it = m_fluxMap.begin();
-		typename FluxMap::const_iterator it_end = m_fluxMap.end();
-		for (; it != it_end; ++it)
+		// open file
+		if (MPI_File_open(m_mpiComm, filename.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh))
+			UG_THROW("Unable to open " << filename << ".");
+
+		// calculate offsets for each proc
+		const size_t precision = std::numeric_limits<number>::digits10;
+
+		std::ostringstream testBuf;
+		testBuf << std::scientific << std::setprecision(precision) << std::showpos << 1.0;
+		const size_t doubleValueSize = testBuf.str().size();
+
+		size_t nEntries = 0;
+		const size_t nRow = m_fluxMatrix.num_rows();
+		for (size_t r = 0; r < nRow; ++r)
 		{
-			const MathVector<dim>& coords = it->first;
-			const MathVector<dim>& fluxVec = (it->second).first;
-			const number area = (it->second).second;
-			for (size_t d = 0; d < (size_t) dim; ++d)
-				outFile << coords[d] << ", ";
-			for (size_t d = 0; d < (size_t) dim-1; ++d)
-				outFile << fluxVec[d] / area << ", ";
-			outFile << fluxVec[dim-1] / area << std::endl;
+			typename matrix_type::row_iterator cit = m_fluxMatrix.begin_row(r);
+			typename matrix_type::row_iterator citEnd = m_fluxMatrix.end_row(r);
+			for (; cit != citEnd && cit.index() < r; ++cit) // only sub-diagonal values count
+				if (cit.value()) // only non-zero values count
+					++nEntries;
 		}
-	}
-	UG_CATCH_THROW("Output file" << filename << " could not be written to.");
 
-	outFile.close();
+		unsigned long mySize = nEntries * 2*dim * (doubleValueSize + 1);
+		if (pcl::ProcRank() == 0)
+		{
+			// file head
+			header = std::string("coordX");
+			if (dim >= 2) header.append(std::string(",coordY"));
+			if (dim >= 3) header.append(std::string(",coordZ"));
+			header.append(std::string(",fluxX"));
+			if (dim >= 2) header.append(std::string(",fluxY"));
+			if (dim >= 3) header.append(std::string(",fluxZ"));
+			header.append("\n");
+			mySize += header.size();
+		}
+
+		unsigned long allSizesUpToMine;
+		MPI_Scan(&mySize, &allSizesUpToMine, 1, MPI_LONG_LONG, MPI_SUM, m_mpiComm);
+		unsigned long offset = allSizesUpToMine - mySize;
+
+ 		// write data at correct offset
+		MPI_File_seek(fh, offset, MPI_SEEK_SET);
+
+		if (pcl::ProcRank() == 0)
+			MPI_File_write(fh, header.c_str(), header.size(), MPI_BYTE, &status);
+
+		MathVector<dim> coords;
+		MathVector<dim> fluxVec;
+		for (size_t r = 0; r < nRow; ++r)
+		{
+			typename matrix_type::row_iterator cit = m_fluxMatrix.begin_row(r);
+			typename matrix_type::row_iterator citEnd = m_fluxMatrix.end_row(r);
+			for (; cit != citEnd && cit.index() < r; ++cit) // only sub-diagonal values count
+			{
+				if (cit.value()) // only sub-diagonal and non-zero values count
+				{
+					const size_t c = cit.index();
+
+					std::ostringstream buf;
+					buf << std::scientific << std::setprecision(precision) << std::showpos;
+
+					UG_COND_THROW(dof2Vrt.find(r) == dof2Vrt.end(), "From vertex not found.");
+					UG_COND_THROW(dof2Vrt.find(c) == dof2Vrt.end(), "To vertex not found.");
+					const MathVector<dim>& coFrom = aaPos[dof2Vrt[r]];
+					const MathVector<dim>& coTo = aaPos[dof2Vrt[c]];
+					VecScaleAdd(coords, 0.5, coFrom, 0.5, coTo);
+					VecScaleAdd(fluxVec, 1.0, coTo, -1.0, coFrom);
+					VecNormalize(fluxVec, fluxVec);
+					VecScale(fluxVec, fluxVec, cit.value());
+
+					for (size_t d = 0; d < (size_t) dim; ++d)
+						buf << coords[d] << ",";
+					for (size_t d = 0; d < (size_t) dim-1; ++d)
+						buf << fluxVec[d]*scale_factor << ",";
+					buf << fluxVec[dim-1]*scale_factor << std::endl;
+
+					MPI_File_write(fh, buf.str().c_str(), buf.str().size(), MPI_BYTE, &status);
+				}
+			}
+		}
+
+		// close file
+		MPI_File_close(&fh);
+	}
+	else
+#endif
+	{
+		std::ofstream outFile;
+		outFile.open(filename.c_str(), std::ios_base::out);
+
+		// write fluxes
+		try
+		{
+			// write file header
+			header = std::string("coordX");
+			if (dim >= 2) header.append(std::string(",coordY"));
+			if (dim >= 3) header.append(std::string(",coordZ"));
+			header.append(std::string(",fluxX"));
+			if (dim >= 2) header.append(std::string(",fluxY"));
+			if (dim >= 3) header.append(std::string(",fluxZ"));
+			outFile << header << std::endl;
+
+			// write vectors
+			const size_t precision = std::numeric_limits<number>::digits10;
+			outFile << std::scientific << std::setprecision(precision) << std::showpos;
+			MathVector<dim> coords;
+			MathVector<dim> fluxVec;
+			const size_t nRow = m_fluxMatrix.num_rows();
+			for (size_t r = 0; r < nRow; ++r)
+			{
+				typename matrix_type::row_iterator cit = m_fluxMatrix.begin_row(r);
+				typename matrix_type::row_iterator citEnd = m_fluxMatrix.end_row(r);
+				for (; cit != citEnd && cit.index() < r; ++cit) // only sub-diagonal values count
+				{
+					if (cit.value()) // only sub-diagonal and non-zero values count
+					{
+						const size_t c = cit.index();
+
+						std::ostringstream buf;
+						buf << std::scientific << std::setprecision(precision) << std::showpos;
+
+						const MathVector<dim>& coFrom = aaPos[dof2Vrt[r]];
+						const MathVector<dim>& coTo = aaPos[dof2Vrt[c]];
+						VecScaleAdd(coords, 0.5, coFrom, 0.5, coTo);
+						VecScaleAdd(fluxVec, 1.0, coTo, -1.0, coFrom);
+						VecNormalize(fluxVec, fluxVec);
+						VecScale(fluxVec, fluxVec, cit.value());
+
+						for (size_t d = 0; d < (size_t) dim; ++d)
+							outFile << coords[d] << ",";
+						for (size_t d = 0; d < (size_t) dim-1; ++d)
+							outFile << fluxVec[d]*scale_factor << ",";
+						outFile << fluxVec[dim-1]*scale_factor << std::endl;
+					}
+				}
+			}
+		}
+		UG_CATCH_THROW("Output file" << filename << " could not be written to.");
+
+		outFile.close();
+	}
 
 	// reset flag
-	m_bWriteFluxMap = false;
+	m_fluxMatrix.clear_and_free();
+	m_bWriteFluxMatrix = false;
 }
 
 
@@ -496,27 +670,25 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::as
 
 	// compute convection shapes
 	size_t nIP = geo.num_scvf();
-	MathMatrix<dim, dim>* vDiffAtIP = new MathMatrix<dim, dim>[nIP];
 	MathVector<dim>* vVelAtIP = new MathVector<dim>[nIP];
 	for (size_t i = 0; i < nIP; ++i)
 	{
-		// not needed
-		//vDiffAtIP[i] = 0.0;
-		//for (size_t d = 0; d < dim; ++d)
-		//	vDiffAtIP[i](d,d) = flEx->m_diffConst;
-
 		VecSet(vVelAtIP[i], 0.0);
 		for (size_t sh = 0; sh < geo.scvf(i).num_sh(); ++sh)
 			VecScaleAppend(vVelAtIP[i], -flEx->m_convConst*u(_P_,sh), geo.scvf(i).global_grad(sh));
 	}
 
-	if (!flEx->m_spConvShape->update(&geo, vVelAtIP, vDiffAtIP, false))
+	if (!flEx->m_spConvShape->update(&geo, vVelAtIP, NULL, false))
 		UG_THROW("Cannot compute convection shapes.");
 	IConvectionShapes<dim>& convShape = *flEx->m_spConvShape.get();
 
-	delete[] vDiffAtIP;
+	//delete[] vDiffAtIP;
 	delete[] vVelAtIP;
 
+	// prepare local indices for box fluxes if they are written
+	LocalIndices indBoxFlux;
+	if (flEx->m_bWriteFluxMatrix)
+		flEx->m_ddBoxFluxes->indices(elem, indBoxFlux, true);
 
 	// loop SCVFs
 	for (size_t s = 0; s < geo.num_scvf(); ++s)
@@ -551,22 +723,18 @@ FluxExporter<TGridFunction>::assemble_flux_elem<TFV1Geom<TElem, dim>, Dummy>::as
 		}
 
 		// fill flux map if needed
-		if (flEx->m_bWriteFluxMap)
+		if (flEx->m_bWriteFluxMatrix)
 		{
-			MathVector<dim> edge_center;
-			VecScaleAdd(edge_center, 0.5, scvTo.global_ip(), 0.5, scvFrom.global_ip());
-			VecNormalize(grad, grad);
-			VecScale(grad, grad, scalarFluxIP);
-			typename FluxMap::iterator it = flEx->m_fluxMap.find(edge_center);
-			if (it != flEx->m_fluxMap.end())
-			{
-				MathVector<dim>& vecFlux = (it->second).first;
-				number& area = (it->second).second;
-				VecAdd(vecFlux, vecFlux, grad);
-				area += VecLength(scvf.normal());
-			}
+			size_t indFrom = indBoxFlux.index(_C_, from);
+			size_t indTo = indBoxFlux.index(_C_, to);
+			if (flEx->m_fluxMatrix.has_connection(indFrom, indTo))
+				BlockRef(flEx->m_fluxMatrix(indFrom, indTo), 0, 0) += scalarFluxIP;
 			else
-				flEx->m_fluxMap[edge_center] = std::make_pair(grad, VecLength(scvf.normal()));
+				BlockRef(flEx->m_fluxMatrix(indFrom, indTo), 0, 0) = scalarFluxIP;
+			if (flEx->m_fluxMatrix.has_connection(indTo, indFrom))
+				BlockRef(flEx->m_fluxMatrix(indTo, indFrom), 0, 0) -= scalarFluxIP;
+			else
+				BlockRef(flEx->m_fluxMatrix(indTo, indFrom), 0, 0) = -scalarFluxIP;
 		}
 	}
 }
@@ -755,7 +923,7 @@ void FluxExporter<TGridFunction>::assemble
 			}
 			else
 			{
-				boost::mpl::for_each<ElemList>(AssembleWrapper<true, order>(this, flux, vol, si));
+				boost::mpl::for_each<ElemList>(AssembleWrapper<false, order>(this, flux, vol, si));
 			}
 		}
 		UG_CATCH_THROW("assemble: Assembling of elements of dimension "
@@ -851,7 +1019,7 @@ FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 {
 	// set up approx space with flux function of the same order as solution grid function
 	SmartPtr<ApproximationSpace<dom_type> > approxFlux =
-		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 3)));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, dim)));
 
 	std::vector<std::string> flux_cmp_names(dim);
 	if (dim >= 1) flux_cmp_names[0] = std::string("flux_x");

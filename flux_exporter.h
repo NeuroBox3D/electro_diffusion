@@ -102,7 +102,7 @@ class FluxExporter
 			std::string fluxName
 		) {write_flux(vtkOutput, filename, step, time, fluxName, 1.0);}
 
-
+		// only FV1
 		void write_box_fluxes
 		(
 			std::string filename,
@@ -300,12 +300,16 @@ class FluxExporter
 
 		int m_quadOrder;
 
-		bool m_bWriteFluxMap;
-		typedef std::map<MathVector<dim>, std::pair<MathVector<dim>, number>, CmpCoords> FluxMap;
-		FluxMap m_fluxMap;
+		bool m_bWriteFluxMatrix;
+		typedef typename CPUAlgebra::matrix_type matrix_type;
+		matrix_type m_fluxMatrix;
+		SmartPtr<DoFDistribution> m_ddBoxFluxes;
+		//typedef std::vector<std::pair<MathVector<dim>, MathVector<dim> > > FluxMap;
+		//FluxMap m_fluxMap;
 
 		SmartPtr<IDomainConstraint<dom_type, CPUBlockAlgebra<dim> > > m_hangingConstraintFlux;
 		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintVol;
+		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintBoxFlux;
 
 		SmartPtr<IConvectionShapes<dim> > m_spConvShape;
 };
