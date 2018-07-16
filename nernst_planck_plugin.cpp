@@ -386,7 +386,7 @@ static void Domain(Registry& reg, string grp)
 		string name = nameBase;	name.append(suffix);
 		reg.add_class_<T, TBase>(name, grp)
 			.add_constructor()
-			.add_method("set_exp_factor", &T::set_exp_factor, "", "exponential weighing factor", "default is 1e2", "")
+			.add_method("set_alpha", &T::set_alpha, "", "exponential weighing factor", "default is 1e2", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, nameBase, tag);
 	}

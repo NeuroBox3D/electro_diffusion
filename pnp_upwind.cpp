@@ -19,6 +19,8 @@
 #include "lib_disc/spatial_disc/disc_util/hfv1_geom.h"             // for HFV1Geometry
 
 
+//#define DEBUG_PNP_UPWIND
+
 namespace ug {
 
 // forward declarations
@@ -36,7 +38,7 @@ namespace nernst_planck {
 
 template <int worldDim>
 PNPUpwind<worldDim>::PNPUpwind()
-: m_expFact(1e2)
+: m_alpha(1e-3)
 {
 	// The shapes do not depend on the diffusion. Thus, we can set the
 	// derivative to be always zero w.r.t. the diffusion for all shapes.
@@ -53,11 +55,89 @@ PNPUpwind<worldDim>::~PNPUpwind()
 
 
 template <int worldDim>
-void PNPUpwind<worldDim>::set_exp_factor(number a)
+void PNPUpwind<worldDim>::set_alpha(number a)
 {
-	m_expFact = a;
+	m_alpha = a;
 }
 
+
+
+#ifdef DEBUG_PNP_UPWIND
+template<int worldDim>
+struct DebugHelper
+{
+	public:
+		static DebugHelper& instance()
+		{
+			static DebugHelper instance;
+			return instance;
+		}
+
+		void write_to_file(GridObject* elem, const std::string& s)
+		{
+			// are we in the next iteration?
+			bool nextIt = false;
+			int elemIt = 0;
+			std::map<GridObject*, int>::iterator it = m_elemMap.find(elem);
+			if (it == m_elemMap.end())
+			{
+				elemIt = m_elemMap[elem] = 0;
+				if (m_currIt == -1)
+				{
+					nextIt = true;
+					++m_currIt;
+				}
+			}
+			else
+			{
+				if (it->second == 5*(m_currIt+1)-1)
+				{
+					nextIt = true;
+					++m_currIt;
+				}
+				elemIt = ++it->second;
+			}
+
+			if (nextIt)
+			{
+				// construct new outFile name
+				std::ostringstream ofnss("pnpUpwind", std::ios_base::app);
+				ofnss << "_" << m_currIt << ".csv";
+				outFileName = ofnss.str();
+			}
+
+			std::ofstream outFile;
+			outFile.open(outFileName.c_str(), std::ios_base::app);
+
+			if (nextIt)
+			{
+				std::string header = std::string("coordX");
+				if (worldDim >= 2) header.append(std::string(",coordY"));
+				if (worldDim >= 3) header.append(std::string(",coordZ"));
+				header.append(std::string(",fluxX"));
+				if (worldDim >= 2) header.append(std::string(",fluxY"));
+				if (worldDim >= 3) header.append(std::string(",fluxZ"));
+				outFile << header << std::endl;
+			}
+
+			if (elemIt % 5 == 0)
+				outFile << s;
+
+			outFile.close();
+		}
+
+	private:
+		DebugHelper() : m_currIt(-1) {}
+
+		DebugHelper(DebugHelper const&);    // do not implement
+		void operator=(DebugHelper const&); // do not implement
+
+	private:
+		std::map<GridObject*, int> m_elemMap;
+		int m_currIt;
+		std::string outFileName;
+};
+#endif
 
 
 template <int worldDim>
@@ -68,104 +148,108 @@ update(const TFVGeom* geo,
        const MathMatrix<worldDim, worldDim>* diff,
        bool computeDeriv)
 {
-/* DEBUG: write upwind directions to file
+#ifdef DEBUG_PNP_UPWIND
+	// DEBUG: write upwind directions to file
 	static void* onlyConsiderMe = (void*) this;
-*/
+	std::ostringstream oss;
+#endif
+
+    PROFILE_BEGIN_GROUP(PNPUpwind_update, "Upwind");
 
 	UG_ASSERT(geo != NULL, "Null pointer passed as FV geometry.");
 	UG_ASSERT(vel != NULL, "Null pointer passed as velocity.");
 
-	const size_t numSH = geo->num_sh();
+	const size_t numSh = geo->num_sh();
 
-/* DEBUG: write upwind directions to file
-// construct outFile name
-std::ostringstream ofnss("pnpUpwind.csv", std::ios_base::app);
-std::ofstream outFile;
-
-if (onlyConsiderMe == (void*) this)
-	outFile.open(ofnss.str().c_str(), std::ios_base::app);
-*/
+	const number beta = 20.0;
 
 	// loop sub-control volume faces
-	for (size_t ip = 0; ip < geo->num_scvf(); ++ip)
+	const size_t numSCVF = geo->num_scvf();
+	for (size_t s = 0; s < numSCVF; ++s)
 	{
-		const typename TFVGeom::SCVF& scvf = geo->scvf(ip);
+		const typename TFVGeom::SCVF& scvf = geo->scvf(s);
+
+		UG_COND_THROW(numSh != scvf.num_sh(),
+			"Number of geometry shapes does not equal number of SCVF shapes.");
 
 		// compute flux
-		const number flux = VecDot(scvf.normal(), vel[ip]);
-
-		// set all shapes to 0.0
-		for (size_t sh = 0; sh < numSH; ++sh)
-			conv_shape(ip, sh) = 0.0;
+		const number flux = VecDot(scvf.normal(), vel[s]);
 
 		// calculate exponentially weighed convection shapes
-		size_t num_scvf_sh = scvf.num_sh();
-		UG_COND_THROW(geo->num_scv_ips() < num_scvf_sh,
-					  "Less SCVs present than SCVF shape functions.");
-		std::vector<MathVector<worldDim> > dir(num_scvf_sh);
-		std::vector<number> dirVelProd(num_scvf_sh);
-		std::vector<number> dirVelProdExp(num_scvf_sh);
-		number dirVelProdExpSum = 0.0;
-		for (size_t sh = 0; sh < num_scvf_sh; ++sh)
+		const number velNorm = VecTwoNorm(vel[s]);
+
+		// for performance, only resize if arrays have to grow;
+		// keep maximal size, simply ignore excess entries
+		if (m_vDir.size() < numSh)
 		{
-			VecScaleAdd(dir[sh], 1.0, scvf.global_ip(), -1.0, geo->scv_global_ips()[sh]);
-			VecNormalize(dir[sh], dir[sh]);
-			dirVelProd[sh] = VecDot(dir[sh], vel[ip]);
-			dirVelProdExp[sh] = exp(m_expFact*dirVelProd[sh]);
-			dirVelProdExpSum += dirVelProdExp[sh];
+			m_vDir.resize(numSh);
+			m_vDirVelProdExp.resize(numSh);
 		}
 
-		for (size_t sh = 0; sh < num_scvf_sh; ++sh)
-			conv_shape(ip, sh) = dirVelProdExp[sh] / dirVelProdExpSum * flux;
+		number dirVelProdExpSum = 0.0;
+		for (size_t sh = 0; sh < numSh; ++sh)
+		{
+			VecScaleAdd(m_vDir[sh], 1.0, scvf.global_ip(), -1.0, geo->global_node_position(sh));
+			VecNormalize(m_vDir[sh], m_vDir[sh]);
+			number dirVelProd = VecDot(m_vDir[sh], vel[s]);
+			m_vDirVelProdExp[sh] = exp(beta*dirVelProd/(velNorm + m_alpha));
+			dirVelProdExpSum += m_vDirVelProdExp[sh];
+		}
+
+		for (size_t sh = 0; sh < numSh; ++sh)
+			conv_shape(s, sh) = m_vDirVelProdExp[sh] / dirVelProdExpSum * flux;
 
 
 		// compute derivatives (w.r.t. vel) if needed
 		if (computeDeriv)
 		{
-			for (size_t sh = 0; sh < numSH; ++sh)
-				VecSet(D_vel(ip, sh), 0.0);
+			for (size_t sh = 0; sh < numSh; ++sh)
+				VecSet(D_vel(s, sh), 0.0);
 
-			for (size_t sh = 0; sh < num_scvf_sh; ++sh)
+			MathVector<worldDim> dirDiff;
+			MathVector<worldDim> innerDeriv;
+			for (size_t sh = 0; sh < numSh; ++sh)
 			{
-				for (size_t sh2 = 0; sh2 < num_scvf_sh; ++sh2)
+				for (size_t sh2 = 0; sh2 < numSh; ++sh2)
 				{
-					MathVector<worldDim> dirDiff;
-					VecScaleAdd(dirDiff, m_expFact*flux, dir[sh], -m_expFact*flux, dir[sh2]);
-					VecScaleAdd(D_vel(ip, sh), 1.0, D_vel(ip, sh), dirVelProdExp[sh2], dirDiff, dirVelProdExp[sh2], scvf.normal());
+					VecScaleAdd(dirDiff, 1.0, m_vDir[sh], -1.0, m_vDir[sh2]);
+					if (velNorm > 1e-8)
+						VecScaleAdd(innerDeriv, 1.0/(velNorm + m_alpha), dirDiff,
+							-VecDot(vel[s], dirDiff)/(velNorm*(velNorm + m_alpha)*(velNorm + m_alpha)), vel[s]);
+					else
+						VecScale(innerDeriv, dirDiff, 1.0/(velNorm + m_alpha));
+					VecScaleAppend(D_vel(s, sh), beta*flux*m_vDirVelProdExp[sh2], innerDeriv,
+							m_vDirVelProdExp[sh2], scvf.normal());
 				}
-				VecScale(D_vel(ip, sh), D_vel(ip, sh), dirVelProdExp[sh] / (dirVelProdExpSum*dirVelProdExpSum));
+				VecScale(D_vel(s, sh), D_vel(s, sh), m_vDirVelProdExp[sh] / (dirVelProdExpSum*dirVelProdExpSum));
 			}
 		}
 
-/* DEBUG: write upwind directions to file
-if (onlyConsiderMe == (void*) this)
-{
-	MathVector<worldDim> temp;
-	MathVector<worldDim> dir = 0.0;
+#ifdef DEBUG_PNP_UPWIND
+		if (onlyConsiderMe == (void*) this)
+		{
+			MathVector<worldDim> temp;
+			MathVector<worldDim> dir = 0.0;
 
-	for (size_t sh = 0; sh < num_scvf_sh; ++sh)
-	{
-		VecScaleAdd(temp, -1.0, scvf.global_ip(), 1.0, geo->scv_global_ips()[sh]);
-		if (flux)
-			VecScaleAdd(dir, 1.0, dir, conv_shape(ip, sh)/flux, temp);
-	}
-	try
-	{
-		for (size_t i = 0; i < worldDim; ++i)
-			outFile << scvf.global_ip()[i] << ", ";
-		for (size_t i = 0; i < worldDim; ++i)
-			outFile << dir[i] << ", ";
-		outFile << "0\n";
-	}
-	UG_CATCH_THROW("Output file" << ofnss.str() << "could not be written to.");
-}
-*/
+			for (size_t sh = 0; sh < numSh; ++sh)
+			{
+				VecScaleAdd(temp, -1.0, scvf.global_ip(), 1.0, geo->global_node_position(sh));
+				VecScaleAdd(dir, 1.0, dir, dirVelProdExp[sh] / dirVelProdExpSum, temp);
+			}
+
+			for (size_t i = 0; i < worldDim; ++i)
+				oss << scvf.global_ip()[i] << ", ";
+			for (size_t i = 0; i < worldDim-1; ++i)
+				oss << dir[i] << ", ";
+			oss << dir[worldDim-1] << "\n";
+		}
+#endif
 	}
 
-/* DEBUG: write upwind directions to file
-if (onlyConsiderMe == (void*) this)
-	outFile.close();
-*/
+#ifdef DEBUG_PNP_UPWIND
+	if (onlyConsiderMe == (void*) this)
+		DebugHelper<worldDim>::instance().write_to_file(geo->elem(), oss.str());
+#endif
 
 	return true;
 }
