@@ -369,7 +369,7 @@ static void Domain(Registry& reg, string grp)
 		string nameBase = string("PNPDistroManager");
 		string name = nameBase;	name.append(suffix);
 #ifdef NPParmetis
-		typedef parmetis::AnisotropyProtector<TDomain> TBase;
+		typedef parmetis::AnisotropyUnificator<TDomain, typename grid_dim_traits<TDomain::dim>::grid_base_object> TBase;
 		reg.add_class_<T, TBase>(name, grp)
 #else
 		reg.add_class_<T>(name, grp)

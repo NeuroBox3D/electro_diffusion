@@ -16,7 +16,7 @@
 #include "lib_grid/parallelization/distro_adjuster.h"          // for DistroAdjuster
 #include "lib_grid/tools/subset_handler_multi_grid.h"          // for MGSubsetHandler
 
-#include "../Parmetis/src/partitioner_parmetis.h"              // for SideSubsetProtector
+#include "../Parmetis/src/anisotropy_unificator.h"             // for AnisotropyUnificator
 
 #include "interface1d_fv.h"                                    // for IInterface1D
 
@@ -45,7 +45,6 @@ namespace nernst_planck {
  * (3) Being derived from AnisotropyProtector, it is able to manipulate the way the
  *     dual graph for ParMetis partitioning is created. This can be used to prevent the
  *     partitioning from having borders along charged membranes.
- *     This feature (currently) only works if the whole domain is distributed from one proc.
  *
  * @todo: Make (2) and (3) work in general distribution conditions.
  */
@@ -53,13 +52,15 @@ template <typename TDomain>
 class PNPDistroManager
 : public DistroAdjuster,
 #ifdef NPParmetis
-  public parmetis::AnisotropyProtector<TDomain>,
+  public parmetis::AnisotropyUnificator<TDomain, typename grid_dim_traits<TDomain::dim>::grid_base_object>,
 #endif
   public DualGraphNeighborCollector<typename grid_dim_traits<TDomain::dim>::grid_base_object>
 {
 	public:
-	typedef typename grid_dim_traits<TDomain::dim>::grid_base_object elem_type;
-	typedef typename grid_dim_traits<TDomain::dim-1>::grid_base_object side_type;
+		typedef typename grid_dim_traits<TDomain::dim>::grid_base_object elem_type;
+		typedef typename grid_dim_traits<TDomain::dim-1>::grid_base_object side_type;
+		typedef Attachment<int> AElemIndex;
+		typedef Attachment<std::vector<int> > AElemIndices;
 
 	public:
 		PNPDistroManager(SmartPtr<ApproximationSpace<TDomain> > approx);
@@ -76,7 +77,20 @@ class PNPDistroManager
 			bool createVerticalInterfaces
 		);
 
-		//void adjust_horizontal_interfaces(const GridMessage_Creation& msg);
+#ifdef NPParmetis
+		// inherited from AnisotropyUnificator
+		void unify
+		(
+			MultiGrid* mg,
+			int lvl,
+			int localOffset,
+			const Grid::AttachmentAccessor<elem_type, AElemIndex>& aaElemInd,
+			const Grid::AttachmentAccessor<side_type, AElemIndices>& aaSideElemInd,
+			std::vector<std::pair<int, int> >& unificationPairs
+		) const;
+#endif
+
+		void adjust_horizontal_interfaces(const GridMessage_Creation& msg);
 
 		void add_interface(SmartPtr<IInterface1D> intf)
 		{m_vIntf.push_back(intf);}
@@ -85,7 +99,7 @@ class PNPDistroManager
 		SmartPtr<ApproximationSpace<TDomain> > m_approx;
 		SmartPtr<TDomain> m_dom;
 		ConstSmartPtr<MGSubsetHandler> m_sh;
-		//MessageHub::SPCallbackId m_spGridCreationCallbackID;
+		MessageHub::SPCallbackId m_spGridCreationCallbackID;
 
 		std::vector<SmartPtr<IInterface1D> > m_vIntf;
 };

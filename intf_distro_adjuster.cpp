@@ -118,18 +118,21 @@ template <typename TDomain>
 PNPDistroManager<TDomain>::PNPDistroManager(SmartPtr<ApproximationSpace<TDomain> > approx)
 :
 #ifdef NPParmetis
-  parmetis::AnisotropyProtector<TDomain>(approx->domain()),
+parmetis::AnisotropyUnificator<TDomain, typename grid_dim_traits<TDomain::dim>::grid_base_object>(approx->domain()),
 #endif
   m_approx(approx), m_dom(approx->domain()), m_sh(m_dom->subset_handler())
 {
+	// TODO: integrate this somehow (but not in AnisotropyUnificator)
+	/*
 	// set this class as its own neighbor collector
 	SmartPtr<DualGraphNeighborCollector<elem_type> > spDGNC = make_sp(this);
 	++*spDGNC.refcount_ptr(); // we do not want to accidentally destroy ourselves
 	this->set_neighbor_collector(spDGNC);
+	*/
 
 	// no longer necessary!
-	//m_spGridCreationCallbackID = m_dom->grid()->message_hub()->register_class_callback(this,
-	//	&ug::nernst_planck::InterfaceDistroAdjuster<TDomain>::adjust_horizontal_interfaces);
+	m_spGridCreationCallbackID = m_dom->grid()->message_hub()->register_class_callback(this,
+		&ug::nernst_planck::PNPDistroManager<TDomain>::adjust_horizontal_interfaces);
 }
 
 
@@ -172,7 +175,7 @@ void PNPDistroManager<TDomain>::adjust
 		sv_it_type it = sv.begin<Vertex>(constrdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
 		sv_it_type it_end = sv.end<Vertex>(constrdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
 
-		size_t intfSrfLvl;
+		size_t intfSrfLvl = 0;
 		if (it != it_end)
 		{
 			sv_it_type it1d = sv.begin<Vertex>(in1dSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
@@ -214,7 +217,7 @@ void PNPDistroManager<TDomain>::adjust
 			}
 		}
 
-	// 2a. add level interface nodes for level constrained
+	// 2. add level interface nodes for level constrained
 		for (size_t lv = 0; lv < nLvl; ++lv)
 		{
 			// if no surface constrained exist here: nothing to do
@@ -239,29 +242,7 @@ void PNPDistroManager<TDomain>::adjust
 				levelVertices[lv].insert(*ithd);
 			}
 		}
-/*
-	// 2b. add surface interface nodes for surface constrained
-		if (nSelected[nLvl])
-		{
-			sv_it_type it1d = sv.begin<Vertex>(in1dSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
-			sv_it_type it1d_end = sv.end<Vertex>(in1dSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
 
-			sv_it_type ithd = sv.begin<Vertex>(inhdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
-			sv_it_type ithd_end = sv.end<Vertex>(inhdSI, gl, SurfaceView::ALL_BUT_SHADOW_COPY);
-
-			// interface nodes MUST be present in surface
-			if (it1d != it1d_end)
-			{
-				sel.select(*it1d, sel.get_selection_status(*it1d) | IS_NORMAL);
-				levelVertices[mg.get_level(*it1d)].insert(*it1d);
-			}
-			if (ithd != ithd_end)
-			{
-				sel.select(*ithd, sel.get_selection_status(*ithd) | IS_NORMAL);
-				levelVertices[mg.get_level(*ithd)].insert(*ithd);
-			}
-		}
-*/
 	// 3. treat root nodes
 		if (partitionForLocalProc)
 		{
@@ -301,9 +282,7 @@ void PNPDistroManager<TDomain>::adjust
 			}
 		}
 
-	// It seems to be enough to do this on root elements.
-
-	// 4. assign vertical master and slave states:
+	// 4. assign vertical master and slave states on higher levels
 		if (!createVerticalInterfaces) continue;
 
 		// now for each level: mark appropriately
@@ -375,262 +354,196 @@ void PNPDistroManager<TDomain>::adjust
 }
 
 
-#if 0
+
 template <typename TDomain>
 void PNPDistroManager<TDomain>::adjust_horizontal_interfaces(const GridMessage_Creation& msg)
 {
 	if (msg.msg() != GMCT_CREATION_STOPS) return;
 
-	// We only have to make sure that the processes having constrained elements,
-	// but where the interface nodes are pure V-MASTER, build h-interfaces for the interface nodes.
-	// ALSO: It is possible that no constrained exists but an interface node is connected to a full-d
-	// element which is NOT v-master. Another h-interface is needed in this situation.
+	// We only have to make sure that the interface node h-masters
+	// are not located on such processes that do not have any adjacent elements
+	// (this would be bad for smoothing).
 
 	typedef typename geometry_traits<Vertex>::const_iterator sh_it_type;
-	typedef typename SurfaceView::traits<Vertex>::const_iterator sv_it_type;
-	typedef typename GridLayoutMap::Types<Vertex>::Interface IntfType;
+	typedef typename MultiGrid::traits<elem_type>::secure_container elem_list;
 
-	MultiGrid& mg = *m_dom->grid();
-	DistributedGridManager& dgm = *mg.distributed_grid_manager();
-	GridLayoutMap& glm = dgm.grid_layout_map();
-	//const SurfaceView& sv = *m_approx->surface_view();
-
-	size_t nLvl = mg.num_levels();
-
-	dgm.enable_interface_management(false);
-
-	CompareByAttachment<Vertex, AGeomObjID> gidCmp(*m_dom->grid(), aGeomObjID); // needed for interface entry search
-
-	//size_t nLvl = m_dom->grid()->num_levels();
-	int nProcs = pcl::NumProcs();
-	int locRank = pcl::ProcRank();
-
-	size_t sz = m_vIntf.size();
-	for (size_t i = 0; i < sz; ++i)
+	// determine subsets to treat (use std::set to exclude double entries)
+	std::set<int> sis;
+	const size_t nIntf = m_vIntf.size();
+	for (size_t i = 0; i < nIntf; ++i)
 	{
 		SmartPtr<IInterface1D> intf = m_vIntf[i];
+		sis.insert(intf->intf_node_1d_subset_index());
+		sis.insert(intf->intf_node_hd_subset_index());
+	}
+	size_t nsi = sis.size();
 
-		int constrdSI = intf->constrained_subset_index();
-		int i1dSI = intf->intf_node_1d_subset_index();
-		int ihdSI = intf->intf_node_hd_subset_index();
+	MultiGrid& mg = *m_dom->grid();
 
-		for (size_t lvl = 0; lvl < nLvl; ++lvl)
+	// assign interface node states:
+	//   state = 0 mod 3  does not exist on this proc
+	//   state = 1 mod 3  exists but has no non-ghost elem neighbor
+	//   state = 2 mod 3  exists and has non-ghost elem neighbor
+	//   state / 3 encodes the element status (h-master or h-slave, etc.)
+	const size_t nLvl = mg.num_levels();
+	std::vector<int> localState(nLvl*nsi, 0);
+	DistributedGridManager& dgm = *mg.distributed_grid_manager();
+
+	std::set<int>::const_iterator itSI = sis.begin();
+	std::set<int>::const_iterator itSIEnd = sis.end();
+	for (size_t si = 0; itSI != itSIEnd; ++itSI, ++si)
+	{
+		for (size_t lv = 0; lv < nLvl; ++lv)
 		{
-			// find all non-vmaster procs that share a copy of the interface nodes
-			int rankIN1d = nProcs;
-			int rankINhd = nProcs;
-
-			Vertex* vrtIN1d = NULL;
-			Vertex* vrtINhd = NULL;
-
-			sh_it_type it = m_sh->begin<Vertex>(i1dSI, lvl);
-			sh_it_type it_end = m_sh->end<Vertex>(i1dSI, lvl);
-
+			sh_it_type it = m_sh->begin<Vertex>(*itSI, lv);
+			sh_it_type it_end = m_sh->end<Vertex>(*itSI, lv);
 			if (it != it_end)
 			{
-				if ((dgm.get_status(*it) & (ES_H_MASTER | ES_H_SLAVE | ES_V_SLAVE))
-					|| (dgm.get_status(*it) == ES_NONE))
-					rankIN1d = locRank;
+				localState[nLvl*si + lv] = 1;
 
-				vrtIN1d = *it;
-				//UG_LOGN("Intf " << i << ", lvl " << lvl << ": 1d inode state: " << dgm.get_status(*it));
-			}
-			bool isVMaster1d =  vrtIN1d && rankIN1d == nProcs;
-
-			it = m_sh->begin<Vertex>(ihdSI, lvl);
-			it_end = m_sh->end<Vertex>(ihdSI, lvl);
-
-			if (it != it_end)
-			{
-				if ((dgm.get_status(*it) & (ES_H_MASTER | ES_H_SLAVE | ES_V_SLAVE))
-					|| (dgm.get_status(*it) == ES_NONE))
-					rankINhd = locRank;
-
-				vrtINhd = *it;
-
-				//GridObject* geomObj = mg.get_parent(*it);
-				//UG_LOGN("Intf " << i << ", lvl " << lvl << ": hd inode state: "
-				//		<< (unsigned int) dgm.get_status(*it) << ",   father: " << geomObj << ".");
-			}
-			bool isVMasterhd =  vrtINhd && rankINhd == nProcs;
-
-			// now communicate who is to be h-master
-			// (if h-master already exists, they coincide by construction)
-			pcl::ProcessCommunicator comm;
-			int rankIN1dGlob;
-			comm.allreduce(&rankIN1d, &rankIN1dGlob, 1, PCL_RO_MIN);
-
-			int rankINhdGlob;
-			comm.allreduce(&rankINhd, &rankINhdGlob, 1, PCL_RO_MIN);
-
-//UG_LOGN("rank_1d: " << rankIN1dGlob);
-
-			// find out whether there are any constrained nodes
-			bool constrdExist = false;
-			it = m_sh->begin<Vertex>(constrdSI, lvl);
-			it_end = m_sh->end<Vertex>(constrdSI, lvl);
-
-			for (; it != it_end; ++it)
-			{
-				if ((dgm.get_status(*it) & ES_V_SLAVE) || (dgm.get_status(*it) == ES_NONE))
+				// h-master needs to have at least one full-dim elem neighbor
+				// AND that neighbor needs to be non-ghost
+				elem_list el;
+				mg.associated_elements(el, *it);
+				const size_t elSz = el.size();
+				for (size_t e = 0; e < elSz; ++e)
 				{
-					constrdExist = true;
-					break;
-				}
-			}
-
-			if (rankIN1dGlob < nProcs)
-			{
-				/*
-				// find out whether 1d intf node is connected to non-v-slave element
-				bool non_vmaster_connected = false;
-				if (vrtIN1d)
-				{
-					typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
-					edge_list el;
-					mg.associated_elements(el, vrtIN1d);
-					size_t elsz = el.size();
-					for (size_t ed = 0; ed < elsz; ++ed)
+					if (!dgm.is_ghost(el[e]))
 					{
-						if (!dgm.contains_status(el[ed], ES_V_MASTER))
-						{
-							non_vmaster_connected = true;
-							break;
-						}
-					}
-				}
-				*/
-
-				// now send ranks of v-masters with constrained nodes to h-master
-				int* recBuff = NULL;
-				if (locRank == rankIN1dGlob) recBuff = new int[nProcs];
-
-				if (isVMaster1d && (constrdExist /*|| non_vmaster_connected*/)) rankIN1d = locRank;
-				else rankIN1d = nProcs;
-				comm.gather(&rankIN1d, 1, PCL_DT_INT, recBuff, 1, PCL_DT_INT, rankIN1dGlob);
-
-				// on h-master: add new slaves to h-master interface
-				if (locRank == rankIN1dGlob)
-				{
-					for (size_t j = 0; j < (size_t) nProcs; ++j)
-					{
-						if (recBuff[j] != nProcs && j != (size_t) locRank)
-						{
-							IntfType& ii = glm.get_layout<Vertex>(INT_H_MASTER).interface(j, lvl);
-
-
-							// push back elem if not already in interface
-							IntfType::iterator it = ii.find_insert_pos_sorted(vrtIN1d, gidCmp);
-							if (it == ii.end() || gidCmp(vrtIN1d, ii.get_element(it)))
-							{
-			//UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " on level " << lvl << " as master for proc " << j << ".\n");
-								ii.insert(vrtIN1d, it);
-
-			//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-			//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
-							}
-						}
-					}
-				}
-				// on slaves: add master to slave interface
-				else
-				{
-					if (rankIN1d != nProcs)
-					{
-						IntfType& ii = glm.get_layout<Vertex>(INT_H_SLAVE).interface(rankIN1dGlob, lvl);
-
-						// push back elem if not already in interface
-						IntfType::iterator it = ii.find_insert_pos_sorted(vrtIN1d, gidCmp);
-						if (it == ii.end() || gidCmp(vrtIN1d, ii.get_element(it)))
-						{
-			//UG_LOG("Inserting 1d intf vertex " << vrtIN1d << " on level " << lvl << " as slave for proc " << rankIN1dGlob << ".\n");
-							ii.insert(vrtIN1d, it);
-
-			//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-			//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
-						}
+						localState[nLvl*si + lv] = 2;
+						break;
 					}
 				}
 
-				// delete receive buffer on h-master
-				if (locRank == rankIN1dGlob) delete[] recBuff;
+				localState[nLvl*si + lv] += 3*dgm.get_status(*it);
+			}
+		}
+	}
+
+	// allgather interface node states
+	size_t nProcs = pcl::NumProcs();
+	std::vector<int> globalState(nProcs*nLvl*nsi);
+	pcl::ProcessCommunicator pc;
+	pc.allgather(GetDataPtr(localState), nLvl*nsi, PCL_DT_INT, GetDataPtr(globalState), nLvl*nsi, PCL_DT_INT);
+
+	// loop interface nodes and levels and change HM where needed
+	typedef typename GridLayoutMap::Types<Vertex>::Interface IntfType;
+	GridLayoutMap& glm = dgm.grid_layout_map();
+	CompareByAttachment<Vertex, AGeomObjID> gidCmp(*m_dom->grid(), aGeomObjID); // needed for interface entry search
+	dgm.enable_interface_management(false);
+	int locRank = pcl::ProcRank();
+
+	size_t si = 0;
+	for (itSI = sis.begin(); itSI != itSIEnd; ++itSI, ++si)
+	{
+		for (size_t lv = 0; lv < nLvl; ++lv)
+		{
+			// find out whether horizontal master has to be changed
+			// and - if so - who shall be the new master
+			int hMaster = -1;
+			bool badHMaster = false;
+			int minHMCandidate = -1;
+			std::vector<int> hSlaveCandidates;
+			int ownState = 0;
+
+			for (size_t p = 0; p < nProcs; ++p)
+			{
+				const int& state = globalState[nLvl*(p*nsi + si) + lv];
+
+				if (p == (size_t) locRank)
+					ownState = state;
+
+				if (state / 3 & ES_H_MASTER)
+				{
+					UG_COND_THROW(hMaster != -1, "Two h-masters!");
+					hMaster = p;
+					badHMaster = (state % 3 != 2);
+				}
+
+				// non-h-interface vertices are not considered for new interfaces either
+				if (!(state / 3 & (ES_H_MASTER | ES_H_SLAVE)))
+					continue;
+
+				if (state % 3 == 1)
+					hSlaveCandidates.push_back(p);
+				else if (state % 3 == 2)
+				{
+					if (minHMCandidate == -1)
+						minHMCandidate = p;
+					else
+						hSlaveCandidates.push_back(p);
+				}
 			}
 
-			// same again for high-dim intf node
-			if (rankIN1dGlob < nProcs)
+			// if hmaster is already well chosen, do not change it
+			if (!badHMaster)
+				continue;
+
+//UG_LOGN("  Bad choice of horizontal master for subset " << *itSI << " on level " << lv << ", adjusting.");
+
+			UG_COND_THROW(minHMCandidate == -1, "No proc seems to have an interface node "
+				"connected to a non-ghost element for subset " << *itSI << " on level " << lv << ".");
+
+			// no changes to interfaces of procs that do not have the interface node
+			// or of procs that did not participate in the horizontal interface before
+			if ((ownState % 3 == 0) || !(ownState / 3 & (ES_H_MASTER | ES_H_SLAVE)))
+				continue;
+
+			// change interfaces
+			// (1) remove old entries
+			// (2) create new
+
+			// (1) remove old entries
+			Vertex* intfVrt = *m_sh->begin<Vertex>(*itSI, lv);
+			size_t nSlaves = hSlaveCandidates.size();
+			if (locRank == hMaster)
 			{
-				/*
-				// find out whether 1d intf node is connected to non-v-slave element
-				bool non_vmaster_connected = false;
-				if (vrtINhd)
+				for (size_t i = 0; i < nSlaves; ++i)
 				{
-					typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
-					edge_list el;
-					mg.associated_elements(el, vrtINhd);
-					size_t elsz = el.size();
-					for (size_t ed = 0; ed < elsz; ++ed)
-					{
-						if (!dgm.contains_status(el[ed], ES_V_MASTER))
-						{
-							non_vmaster_connected = true;
-							break;
-						}
-					}
+					int p = hSlaveCandidates[i];
+
+					// instead of local proc (which surely is new HS)
+					// treat the new HM which surely was HS before
+					if (p == locRank)
+						p = minHMCandidate;
+
+					IntfType& ii = glm.get_layout<Vertex>(INT_H_MASTER).interface(p, lv);
+					IntfType::iterator posIt = ii.find_insert_pos_sorted(intfVrt, gidCmp);
+					UG_COND_THROW(posIt == ii.end() || gidCmp(intfVrt, ii.get_element(posIt)),
+						"Interface entry to proc " << p << ", that is to be removed, does not exist.");
+					ii.erase(posIt);
 				}
-				*/
+			}
+			else
+			{
+				IntfType& ii = glm.get_layout<Vertex>(INT_H_SLAVE).interface(hMaster, lv);
+				IntfType::iterator posIt = ii.find_insert_pos_sorted(intfVrt, gidCmp);
+				UG_COND_THROW(posIt == ii.end() || gidCmp(intfVrt, ii.get_element(posIt)),
+					"Interface entry to proc " << hMaster << ", that is to be removed, does not exist.");
+				ii.erase(posIt);
+			}
 
-				// now send ranks of v-masters with constrained nodes to h-master
-				int* recBuff = NULL;
-				if (locRank == rankINhdGlob) recBuff = new int[nProcs];
-				if (isVMasterhd && (constrdExist /*|| non_vmaster_connected*/)) rankINhd = locRank;
-				else rankINhd = nProcs;
-
-				comm.gather(&rankINhd, 1, PCL_DT_INT, recBuff, 1, PCL_DT_INT, rankINhdGlob);
-
-				// on h-master: add slaves to h-master interface
-				if (locRank == rankINhdGlob)
+			// (2) insert new entries
+			if (locRank == minHMCandidate)
+			{
+				for (size_t i = 0; i < nSlaves; ++i)
 				{
-					for (size_t j = 0; j < (size_t) nProcs; ++j)
-					{
-						if (recBuff[j] != nProcs && j != (size_t) locRank)
-						{
-							IntfType& ii = glm.get_layout<Vertex>(INT_H_MASTER).interface(j, lvl);
+					int p = hSlaveCandidates[i];
 
-							// push back elem if not already in interface
-							IntfType::iterator it = ii.find_insert_pos_sorted(vrtINhd, gidCmp);
-							if (it == ii.end() || gidCmp(vrtINhd, ii.get_element(it)))
-							{
-			//UG_LOG("Inserting hd intf vertex " << vrtINhd << " on level " << lvl << " as master for proc " << j << ".\n");
-								ii.insert(vrtINhd, it);
-
-			//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-			//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
-							}
-						}
-					}
+					IntfType& ii = glm.get_layout<Vertex>(INT_H_MASTER).interface(p, lv);
+					IntfType::iterator posIt = ii.find_insert_pos_sorted(intfVrt, gidCmp);
+					UG_COND_THROW(posIt != ii.end() && !gidCmp(intfVrt, ii.get_element(posIt)),
+						"Interface entry that is to be created already exists.");
+					ii.insert(intfVrt, posIt);
 				}
-				// on slaves: add master to slave interface
-				else
-				{
-					if (rankINhd != nProcs)
-					{
-						IntfType& ii = glm.get_layout<Vertex>(INT_H_SLAVE).interface(rankINhdGlob, lvl);
-
-						// push back elem if not already in interface
-						IntfType::iterator it = ii.find_insert_pos_sorted(vrtINhd, gidCmp);
-						if (it == ii.end() || gidCmp(vrtINhd, ii.get_element(it)))
-						{
-			//UG_LOG("Inserting hd intf vertex " << vrtINhd << " on level " << lvl << " as slave for proc " << rankINhdGlob << ".\n");
-							ii.insert(vrtINhd, it);
-
-			//for (IntfType::iterator iter = ii.begin(); iter != ii.end(); ++iter)
-			//UG_LOG(ii.get_element(iter) << "   " << ii.get_local_id(iter) << "\n");
-						}
-					}
-				}
-
-				// delete receive buffer on hmaster
-				if (locRank == rankINhdGlob) delete[] recBuff;
+			}
+			else
+			{
+				IntfType& ii = glm.get_layout<Vertex>(INT_H_SLAVE).interface(minHMCandidate, lv);
+				IntfType::iterator posIt = ii.find_insert_pos_sorted(intfVrt, gidCmp);
+				UG_COND_THROW(posIt != ii.end() && !gidCmp(intfVrt, ii.get_element(posIt)),
+					"Interface entry that is to be created already exists.");
+				ii.insert(intfVrt, posIt);
 			}
 		}
 	}
@@ -638,6 +551,95 @@ void PNPDistroManager<TDomain>::adjust_horizontal_interfaces(const GridMessage_C
 	glm.remove_empty_interfaces();
 	dgm.enable_interface_management(true);
 	dgm.grid_layouts_changed(false);
+}
+
+
+#ifdef NPParmetis
+template <typename TDomain>
+void PNPDistroManager<TDomain>::unify
+(
+	MultiGrid* mg,
+	int lvl,
+	int localOffset,
+	const Grid::AttachmentAccessor<elem_type, AElemIndex>& aaElemInd,
+	const Grid::AttachmentAccessor<side_type, AElemIndices>& aaSideElemInd,
+	std::vector<std::pair<int, int> >& unificationPairs
+) const
+{
+	// call AnisotropyUnificator::unify() first
+	parmetis::AnisotropyUnificator<TDomain, elem_type>::unify(mg, lvl, localOffset, aaElemInd, aaSideElemInd, unificationPairs);
+
+	// add protection of the interfaces
+	size_t nIntf = m_vIntf.size();
+	for (size_t i = 0; i < nIntf; ++i)
+	{
+		SmartPtr<IInterface1D> intf = m_vIntf[i];
+		const int nodeHdSI = intf->intf_node_1d_subset_index();
+		const int constrainedSI = intf->constrained_subset_index();
+
+		// get hd interface node
+		typedef typename geometry_traits<Vertex>::const_iterator sh_it_type;
+		Vertex* vrt = NULL;
+		sh_it_type it = m_sh->begin<Vertex>(nodeHdSI, lvl);
+		sh_it_type itEnd = m_sh->end<Vertex>(nodeHdSI, lvl);
+
+		if (it == itEnd)
+			continue;
+
+		vrt = *it;
+		UG_COND_THROW(++it != itEnd, "More than one hd interface node in interface on level " << lvl
+			<< " for interface " << i << ".");
+
+		// find all connected full-dim elements
+		typedef typename MultiGrid::traits<elem_type>::secure_container elem_list;
+		elem_list el;
+		mg->associated_elements(el, vrt);
+
+		// find the one that connects the 1d side
+		// identifiable as the only element that has no constrained side
+		elem_type* elem1d = NULL;
+		size_t eSz = el.size();
+		for (size_t e = 0; e < eSz; ++e)
+		{
+			typedef typename MultiGrid::traits<side_type>::secure_container side_list;
+			side_list sl;
+			mg->associated_elements(sl, el[e]);
+			size_t sSz = sl.size();
+			bool noConstr = true;
+			for (size_t s = 0; s < sSz; ++s)
+			{
+				if (m_sh->get_subset_index(sl[s]) == constrainedSI)
+				{
+					noConstr = false;
+					break;
+				}
+			}
+			if (noConstr)
+			{
+				elem1d = el[e];
+				break;
+			}
+		}
+
+		if (!elem1d)
+			continue;
+
+		// no unification with ghosts
+		if (aaElemInd[elem1d] == -1)
+			continue;
+
+		// get all other elems and create unification pairs
+		UG_COND_THROW(eSz < 2, "Non-ghost 1d elem connected to 1d interface node, but no full-dim elem!");
+		for (size_t otherInd = 0; otherInd < eSz; ++otherInd)
+		{
+			// no self-unification, no unification with ghosts
+			if (el[otherInd] == elem1d || aaElemInd[el[otherInd]] == -1)
+				continue;
+
+			unificationPairs.push_back(std::make_pair(aaElemInd[elem1d] + localOffset,
+													  aaElemInd[el[otherInd]] + localOffset));
+		}
+	}
 }
 #endif
 
