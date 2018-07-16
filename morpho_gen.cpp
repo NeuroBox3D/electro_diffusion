@@ -897,6 +897,9 @@ void MorphoGen::graft_spine()
 	Vertex* v = MergeMultipleVertices(m_grid, vrts.begin(), vrts.end());
 	m_tmpHeadHeight = m_aaPos[v].z() - (SPINE_NECK_LENGTH + DENDRITE_RADIUS);
 
+	// repair orientation
+	FixFaceOrientation(m_grid, m_grid.begin<Face>(), m_grid.end<Face>());
+
 	// assign PSD subset
 	m_sel.clear<Vertex>();
 	m_sel.clear<Edge>();
@@ -1829,6 +1832,90 @@ void MorphoGen::replace_subsets
 }
 
 
+// lib_grid's FixFaceOrientation has been altered and does not work as needed any more
+// I therefore copied the previous working version here
+template <class TFaceIterator>
+static void MyFixFaceOrientation
+(
+	Grid& grid,
+	TFaceIterator facesBegin,
+	TFaceIterator facesEnd
+)
+{
+	using namespace std;
+
+	// we use marks to differentiate between processed and unprocessed faces
+	grid.begin_marking();
+
+	// we have to mark all faces between facesBegin and facesEnd initially,
+	// to differentiate them from the other faces in the grid.
+	for (TFaceIterator iter = facesBegin; iter != facesEnd; ++iter)
+		grid.mark(*iter);
+
+	// this edge descriptor will be used multiple times
+	EdgeDescriptor ed;
+
+	// containers to store neighbour elements.
+	vector<Face*> vNeighbours;
+
+	// stack that stores candidates
+	stack<Face*> stkFaces;
+
+	// we'll iterate through all faces
+	while (facesBegin != facesEnd)
+	{
+		// candidates are empty at this point.
+		// if the face is unprocessed it is a new candidate
+		if (grid.is_marked(*facesBegin))
+		{
+			// mark it as candidate (by removing the mark)
+			grid.unmark(*facesBegin);
+			stkFaces.push(*facesBegin);
+
+			// while the stack is not empty
+			while (!stkFaces.empty())
+			{
+				// get the candidate
+				Face* f = stkFaces.top();
+				stkFaces.pop();
+
+				// get the neighbours for each side
+				for (size_t i = 0; i < f->num_edges(); ++i)
+				{
+					f->edge_desc(i, ed);
+					GetNeighbours(vNeighbours, grid, f, i);
+
+					// fix orientation of unprocessed neighbours.
+					for (size_t j = 0; j < vNeighbours.size(); ++j)
+					{
+						Face* fn = vNeighbours[j];
+						if (grid.is_marked(fn))
+						{
+							// check whether the orientation of f and fn differs.
+							if (EdgeOrientationMatches(&ed, fn))
+							{
+								// the orientation of ed is the same as the orientation
+								// of an edge in fn.
+								// the faces thus have different orientation.
+								grid.flip_orientation(fn);
+							}
+
+							// mark the face as processed and add it to the stack
+							grid.unmark(fn);
+							stkFaces.push(fn);
+						}
+					}
+				}
+			}
+		}
+
+		// check the next face
+		++facesBegin;
+	}
+
+	grid.end_marking();
+}
+
 
 void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offset, int newVolSI,  const std::vector<int>& vNewFrontSI)
 {
@@ -1851,7 +1938,7 @@ void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offse
 	Extrude(m_grid, &vrts, &edges, &faces, vector3(0,0,0), m_aaPos, EO_CREATE_FACES | EO_CREATE_VOLUMES, NULL);
 
 	// fix face orientation (might be wrong)
-	FixFaceOrientation(m_grid, faces.begin(), faces.end());
+	MyFixFaceOrientation(m_grid, faces.begin(), faces.end());
 
 	// normal move
 	CalculateFaceNormals(m_grid, m_sel.begin<Face>(), m_sel.end<Face>(), aPosition, aNormal);
@@ -1860,6 +1947,8 @@ void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offse
 		vector3& pos = m_aaPos[*iter];
 
 		// calculate vertex normal by averaging face normals
+		// (but if there are two faces with more or less the same normal, only add once)
+		std::vector<vector3> consideredNormals;
 		vector3 normal(0.0, 0.0, 0.0);
 		Grid::face_traits::secure_container assFaces;
 		m_grid.associated_elements(assFaces, *iter);
@@ -1880,7 +1969,24 @@ void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offse
 			}
 
 			if (allSelected)
-				VecAdd(normal, normal, m_aaNorm[assFaces[i]]);
+			{
+				// check whether normal direction has already been considered
+				bool alreadyConsidered = false;
+				size_t nAlreadyConsidered = consideredNormals.size();
+				for (size_t j = 0; j < nAlreadyConsidered; ++j)
+				{
+					if (VecDistance(m_aaNorm[assFaces[i]], consideredNormals[j]) < 1e-4)
+					{
+						alreadyConsidered = true;
+						break;
+					}
+				}
+				if (!alreadyConsidered)
+				{
+					consideredNormals.push_back(m_aaNorm[assFaces[i]]);
+					VecAdd(normal, normal, m_aaNorm[assFaces[i]]);
+				}
+			}
 		}
 		VecNormalize(normal, normal);
 
@@ -1962,6 +2068,9 @@ void MorphoGen::create_membrane_and_envelopes()
 	vNewFrontSI[0] = INNER_FRONT_TMP_SI;
 	vNewFrontSI[1] = INNER_FRONT_TMP_SI;
 	create_envelope(vExtrudeSI, -m_membraneEnvelopeRadius, INNER_SI, vNewFrontSI);
+
+	// fix volume orientation (envelope creation may create wrongly oriented volumes)
+	FixOrientation(m_grid, m_grid.begin<Volume>(), m_grid.end<Volume>(), m_aaPos);
 }
 
 
@@ -2896,6 +3005,9 @@ void MorphoGen::create_extensions()
 
 		m_sh.assign_subset(vrts[k], i == 0 ? EXT_LEFT_BND_SI : EXT_RIGHT_BND_SI);
 	}
+
+	// correct orientation of useless extension sides (beauty change only, not really needed)
+	FixFaceOrientation(m_grid, m_sh.begin<Face>(USELESS_SI), m_sh.end<Face>(USELESS_SI));
 }
 
 
@@ -2964,9 +3076,6 @@ void MorphoGen::create_dendrite(const std::string& filename)
 	// create extensions
 	try {create_extensions();}
 	UG_CATCH_THROW("Extension creation failed.");
-
-	// fix volume orientation
-	FixOrientation(m_grid, m_grid.begin<Volume>(), m_grid.end<Volume>(), m_aaPos);
 
 	// name and colorize subsets
 	AssignSubsetColors(m_sh);
