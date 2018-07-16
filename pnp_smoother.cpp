@@ -192,6 +192,12 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::preprocess(SmartPtr<MatrixOperato
 			MatMakeConsistentOverlap0(mat);
 			//MakeConsistent(*pOp, mat);
 		}
+		else if (m_ps == 2)	// restricted additive Schwarz (RAS)
+		{
+			mat = *pOp;
+			MatMakeConsistentOverlap0(mat);
+			//MakeConsistent(*pOp, mat);
+		}
 		else UG_THROW("Invalid parallelization strategy " << m_ps << ".");
 		pmat = &mat;
 	}
@@ -318,6 +324,8 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::step
 
 	if (m_ps == 0)
 		dTmp->change_storage_type(PST_UNIQUE);
+	else if (m_ps == 2)	// restricted additive Schwarz (RAS)
+		dTmp->change_storage_type(PST_CONSISTENT);
 
 #else
 	const vector_type* dTmp = &d;
@@ -370,6 +378,8 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::step
 		c.set_storage_type(PST_UNIQUE);
 	else if (m_ps == 1)
 		c.set_storage_type(PST_ADDITIVE);
+	else if (m_ps == 2)	// restricted additive Schwarz (RAS)
+		c.set_storage_type(PST_UNIQUE); // solution is not really unique, but we ignore non-master corrections
 	else UG_THROW("Invalid parallelization strategy " << m_ps << ".");
 #endif
 
