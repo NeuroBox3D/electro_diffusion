@@ -491,7 +491,6 @@ void importSolution
 // template specializations
 #ifdef UG_DIM_1
 	template void adjust_geom_after_refinement<Domain1d>(SmartPtr<ApproximationSpace<Domain1d> >, const char*, const char*);
-	template void mark_global<Domain1d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain1d> >);
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const char*, const char*);
@@ -506,7 +505,6 @@ void importSolution
 #endif
 #ifdef UG_DIM_2
 	template void adjust_geom_after_refinement<Domain2d>(SmartPtr<ApproximationSpace<Domain2d> >, const char*, const char*);
-	template void mark_global<Domain2d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain2d> >);
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const char*, const char*);
@@ -521,7 +519,6 @@ void importSolution
 #endif
 #ifdef UG_DIM_3
 	template void adjust_geom_after_refinement<Domain3d>(SmartPtr<ApproximationSpace<Domain3d> >, const char*, const char*);
-	template void mark_global<Domain3d>(SmartPtr<IRefiner>, SmartPtr<ApproximationSpace<Domain3d> >);
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const char*, const char*);
