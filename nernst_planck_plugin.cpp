@@ -10,7 +10,7 @@
 #include "lib_algebra/operator/interface/preconditioner.h"  // for IPreconditioner
 #include "lib_disc/function_spaces/grid_function.h"         // for GridFunction
 
-#include "config.h"                                         // for #defines
+#include "np_config.h"                                         // for #defines
 #include "domain1d_solution_adjuster.h"                     // for Domain1dSolutionAdjuster
 #include "edl_1d.h"                                         // for EDLSimulation
 #include "electric_circuit.h"                               // for ElectricCircuit

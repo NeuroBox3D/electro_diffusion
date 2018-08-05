@@ -20,7 +20,7 @@
 
 #include "interface1d_fv.h"                                    // for IInterface1D
 
-#include "config.h"  // contains cmake-configured defines,
+#include "np_config.h"  // contains cmake-configured defines,
                      // esp. whether Parmetis is built along
 
 namespace ug {
