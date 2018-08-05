@@ -284,6 +284,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 				"record current through measurement manifold to file (each measurement zone separately)", "")
 			.add_method("record_potential", &T::record_potential, "", "output file name#time#solution",
 				"record averaged potential to file (each measurement zone separately)", "")
+			.add_method("record_concentrations", &T::record_concentrations, "", "output file name#time#solution",
+				"record averaged concentrations to file (each measurement zone separately)", "")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name+suffix, name, tag);
 	}

@@ -1403,10 +1403,14 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 	const size_t nMZ = m_vIntegrationDataCurrent.size();
 	for (size_t mz = 0; mz < nMZ; ++mz)
 	{
-		number currentK = 0.0;
-		number currentNa = 0.0;
-		number currentCl = 0.0;
-		number currentA = 0.0;
+		number currentK_diff = 0.0;
+		number currentNa_diff = 0.0;
+		number currentCl_diff = 0.0;
+		number currentA_diff = 0.0;
+		number currentK_elec = 0.0;
+		number currentNa_elec = 0.0;
+		number currentCl_elec = 0.0;
+		number currentA_elec = 0.0;
 
 		// loop intersecting volumes
 		const size_t nIV = m_vIntegrationDataCurrent[mz].size();
@@ -1427,13 +1431,6 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 
 			for (size_t ip = 0; ip < nIP; ++ip)
 			{
-#if NECK_RECORDER_DEBUG
-				// get coordinates and normal
-				typename TDomain::position_accessor_type::ValueType center;
-				center[0] = iv.vIPData[ip].pos[0];
-				center[1] = iv.vIPData[ip].pos[1];
-#endif
-
 				const IPData& ipd = iv.vIPData[ip];
 
 				// construct function values and gradients at IP (by looping corners)
@@ -1463,22 +1460,26 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 					elFluxA  += convShapes[_A_][ip][co] * DoFRef(*u, di[_A_]);
 				}
 
-				// construct current density
-				const number currK = - m_vDiffConst[_K_] * gradK + elFluxK;
-				const number currNa = - m_vDiffConst[_NA_] * gradNa + elFluxNa;
-				const number currCl = - m_vDiffConst[_CL_] * gradCl + elFluxCl;
-				const number currA = - m_vDiffConst[_A_] * gradA + elFluxA;
+				currentK_diff += ipd.weight * ipd.detJ * (-m_vDiffConst[_K_] * gradK);
+				currentNa_diff += ipd.weight * ipd.detJ * (-m_vDiffConst[_NA_] * gradNa);
+				currentCl_diff -= ipd.weight * ipd.detJ * (-m_vDiffConst[_CL_] * gradCl);
+				currentA_diff -= ipd.weight * ipd.detJ * (-m_vDiffConst[_A_] * gradA);
 
-				currentK += ipd.weight * ipd.detJ * currK;
-				currentNa += ipd.weight * ipd.detJ * currNa;
-				currentCl -= ipd.weight * ipd.detJ * currCl;
-				currentA -= ipd.weight * ipd.detJ * currA;
+				currentK_elec += ipd.weight * ipd.detJ * elFluxK;
+				currentNa_elec += ipd.weight * ipd.detJ * elFluxNa;
+				currentCl_elec -= ipd.weight * ipd.detJ * elFluxCl;
+				currentA_elec -= ipd.weight * ipd.detJ * elFluxA;
 
 #ifdef NECK_RECORDER_DEBUG
+				// get coordinates and normal
+				typename TDomain::position_accessor_type::ValueType center;
+				center[0] = iv.vIPData[ip].pos[0];
+				center[1] = iv.vIPData[ip].pos[1];
+
 				for (size_t d = 0; d < dim; ++d)
 					outFileFluxes << center[d] << ",\t";
 
-				outFileFluxes << "0.0,\t" << scale * ipd.weight * ipd.detJ * (currK) << "\n";
+				outFileFluxes << "0.0,\t" << scale * ipd.weight * ipd.detJ * (-m_vDiffConst[_K_] * gradK + elFluxK) << "\n";
 				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (currNa) << ",\t";
 				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (-currCl) << ",\t";
 				//outFileFluxes << scale * normal[dim-1] * ipd.weight * ipd.detJ * (-currA) << "\n";
@@ -1486,31 +1487,42 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 			}
 		}
 
-		currentK *= scale;
-		currentNa *= scale;
-		currentCl *= scale;
-		currentA *= scale;
+		currentK_diff *= scale;
+		currentNa_diff *= scale;
+		currentCl_diff *= scale;
+		currentA_diff *= scale;
+		currentK_elec *= scale;
+		currentNa_elec *= scale;
+		currentCl_elec *= scale;
+		currentA_elec *= scale;
 
 #ifdef UG_PARALLEL
 		// sum over processes
 		if (pcl::NumProcs() > 1)
 		{
 			pcl::ProcessCommunicator com;
-			number local[4] = {currentK, currentNa, currentCl, currentA};
-			number global[4] = {0.0, 0.0, 0.0, 0.0};
-			com.allreduce(&local, &global, 4, PCL_DT_DOUBLE, PCL_RO_SUM);
+			number local[8] = {currentK_diff, currentNa_diff, currentCl_diff, currentA_diff,
+							   currentK_elec, currentNa_elec, currentCl_elec, currentA_elec};
+			number global[8] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+			com.allreduce(&local, &global, 8, PCL_DT_DOUBLE, PCL_RO_SUM);
 
-			currentK = global[0];
-			currentNa = global[1];
-			currentCl = global[2];
-			currentA = global[3];
+			currentK_diff = global[0];
+			currentNa_diff = global[1];
+			currentCl_diff = global[2];
+			currentA_diff = global[3];
+			currentK_elec = global[4];
+			currentNa_elec = global[5];
+			currentCl_elec = global[6];
+			currentA_elec = global[7];
 		}
 
 		// check if this proc is output proc
 		if (GetLogAssistant().is_output_process())
 #endif
 		{
-			number current = currentK + currentNa + currentCl + currentA;
+			number current_diff = currentK_diff + currentNa_diff + currentCl_diff + currentA_diff;
+			number current_elec = currentK_elec + currentNa_elec + currentCl_elec + currentA_elec;
+			number current = current_diff + current_elec;
 
 			// construct outFile name
 			std::ostringstream ofnss(fnWoExt, std::ios::app);
@@ -1524,12 +1536,14 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 			try
 			{
 				outFile << time << "\t" << current;
+				outFile << "\t" << current_diff;
+				outFile << "\t" << current_elec;
 				if (m_bIndividualCurrents)
 				{
-					outFile << "\t" << currentK;
-					outFile << "\t" << currentNa;
-					outFile << "\t" << currentCl;
-					outFile << "\t" << currentA;
+					outFile << "\t" << currentK_diff + currentK_elec;
+					outFile << "\t" << currentNa_diff + currentNa_elec;
+					outFile << "\t" << currentCl_diff + currentCl_elec;
+					outFile << "\t" << currentA_diff + currentA_elec;
 				}
 				outFile << "\n";
 			}
@@ -1649,6 +1663,118 @@ void NeckRecorder<TDomain, TAlgebra>::record_potential
 
 
 
+template <typename TDomain, typename TAlgebra>
+void NeckRecorder<TDomain, TAlgebra>::record_concentrations
+(
+	const std::string& fileName,
+	number time,
+	ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u,
+	number scale
+)
+{
+	const std::string fnWoExt = FilenameAndPathWithoutExtension(fileName);
+	std::string ext = GetFilenameExtension(fileName);
+	if (ext == "")
+		ext = "dat";
+
+	// prepare if not yet done
+	if (!bPreparedPot)
+	{
+		prepare(m_vIntegrationDataPot, false);
+		bPreparedPot = true;
+	}
+
+	// loop measurement zones
+	const size_t nMZ = m_vIntegrationDataPot.size();
+	for (size_t mz = 0; mz < nMZ; ++mz)
+	{
+		number kInt = 0.0;
+		number naInt = 0.0;
+		number clInt = 0.0;
+		number aInt = 0.0;
+		number area = 0.0;
+
+		// loop intersecting volumes
+		const size_t nIV = m_vIntegrationDataPot[mz].size();
+		for (size_t v = 0; v < nIV; ++v)
+		{
+			const IntegrationVolume& iv = m_vIntegrationDataPot[mz][v];
+			const size_t nCo = iv.vDofIndex.size();
+
+			// loop IPs
+			const size_t nIP = iv.vIPData.size();
+			for (size_t ip = 0; ip < nIP; ++ip)
+			{
+				const IPData& ipd = iv.vIPData[ip];
+
+				// construct function values and gradients at IP (by looping corners)
+				number k = 0.0;
+				number na = 0.0;
+				number cl = 0.0;
+				number a = 0.0;
+
+				for (size_t co = 0; co < nCo; ++co)
+				{
+					k += ipd.vShapes[co] * DoFRef(*u, iv.vDofIndex[co][_K_]);
+					na += ipd.vShapes[co] * DoFRef(*u, iv.vDofIndex[co][_NA_]);
+					cl += ipd.vShapes[co] * DoFRef(*u, iv.vDofIndex[co][_CL_]);
+					a += ipd.vShapes[co] * DoFRef(*u, iv.vDofIndex[co][_A_]);
+				}
+
+				kInt += ipd.weight * ipd.detJ * k;
+				naInt += ipd.weight * ipd.detJ * na;
+				clInt += ipd.weight * ipd.detJ * cl;
+				aInt += ipd.weight * ipd.detJ * a;
+				area += ipd.weight * ipd.detJ;
+			}
+		}
+
+		kInt *= scale;
+		naInt *= scale;
+		clInt *= scale;
+		aInt *= scale;
+
+#ifdef UG_PARALLEL
+		// sum over processes
+		if (pcl::NumProcs() > 1)
+		{
+			pcl::ProcessCommunicator com;
+			number local[5] = {kInt, naInt, clInt, aInt, area};
+			number global[5];
+			com.allreduce(local, global, 5, PCL_DT_DOUBLE, PCL_RO_SUM);
+			kInt = global[0];
+			naInt = global[1];
+			clInt = global[2];
+			aInt = global[3];
+			area = global[4];
+		}
+		//UG_LOGN("zone " << mz << ": " << potInt << ", " << area);
+
+		// check if this proc is output proc
+		if (GetLogAssistant().is_output_process())
+#endif
+		{
+			// construct outFile name
+			std::ostringstream ofnss(fnWoExt, std::ios::app);
+			ofnss << "_" << m_vMeasZoneNames[mz] << "." << ext;
+
+			// open file
+			std::ofstream outFile(ofnss.str().c_str(), std::ios_base::out | std::ios_base::app);
+			UG_COND_THROW(!outFile.is_open(), "File '" << ofnss.str() << "' could not be opened for writing.");
+
+			// write record
+			try
+			{
+				outFile << time << "\t" << (kInt / area) << "\t" << (naInt / area)
+					<< "\t" << (clInt / area) << "\t" << (aInt / area) << "\n";
+			}
+			UG_CATCH_THROW("Output file " << ofnss.str() << " could not be written to.");
+
+			// close file
+			outFile.close();
+		}
+	}
+}
 
 
 // explicit template specializations

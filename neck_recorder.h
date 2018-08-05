@@ -123,6 +123,15 @@ class NeckRecorder
 			number scale
 		);
 
+		/// measure average concentrations
+		void record_concentrations
+		(
+			const std::string& fileName,
+			number time,
+			ConstSmartPtr<GridFunction<TDomain, TAlgebra> > u,
+			number scale
+		);
+
 	protected:
 		/// find intersecting volumes, prepare integration
 		void prepare
