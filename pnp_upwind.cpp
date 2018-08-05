@@ -234,7 +234,7 @@ update(const TFVGeom* geo,
 			for (size_t sh = 0; sh < numSh; ++sh)
 			{
 				VecScaleAdd(temp, -1.0, scvf.global_ip(), 1.0, geo->global_node_position(sh));
-				VecScaleAdd(dir, 1.0, dir, dirVelProdExp[sh] / dirVelProdExpSum, temp);
+				VecScaleAdd(dir, 1.0, dir, m_vDirVelProdExp[sh] / dirVelProdExpSum, temp);
 			}
 
 			for (size_t i = 0; i < worldDim; ++i)
