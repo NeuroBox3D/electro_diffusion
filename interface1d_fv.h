@@ -44,9 +44,9 @@ class IInterface1D
 	public:
 		virtual ~IInterface1D() {};
 		virtual GridObject* get_constrainer_object(GridObject* constrd) = 0;
-		virtual int constrained_subset_index() = 0;
-		virtual int intf_node_hd_subset_index() = 0;
-		virtual int intf_node_1d_subset_index() = 0;
+		virtual int constrained_subset_index() const = 0;
+		virtual int intf_node_hd_subset_index() const = 0;
+		virtual int intf_node_1d_subset_index() const = 0;
 };
 
 
@@ -404,19 +404,19 @@ class Interface1D
 		// inherited from IInterface1D
 		virtual GridObject* get_constrainer_object(GridObject* constrd);
 
-		virtual int constrained_subset_index()
+		virtual int constrained_subset_index() const
 		{
 			UG_COND_THROW(m_siConstr < 0, "Constrained subset index requested but invalid.");
 			return m_siConstr;
 		}
 
-		virtual int intf_node_hd_subset_index()
+		virtual int intf_node_hd_subset_index() const
 		{
 			UG_COND_THROW(m_siIntf[0] < 0, "High-dim interface node subset index requested but invalid.");
 			return m_siIntf[0];
 		}
 
-		virtual int intf_node_1d_subset_index()
+		virtual int intf_node_1d_subset_index() const
 		{
 			UG_COND_THROW(m_siIntf[1] < 0, "1d interface node subset index requested but invalid.");
 			return m_siIntf[1];
