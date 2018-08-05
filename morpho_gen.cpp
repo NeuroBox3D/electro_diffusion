@@ -1995,6 +1995,12 @@ void MorphoGen::create_envelope(const std::vector<int>& vExtrudeSI, number offse
 
 	m_sel.enable_autoselection(autoselEnabled);
 
+	// delete projection information for newly generated elements
+	m_shProj.assign_subset(m_sel.begin<Vertex>(), m_sel.end<Vertex>(), -1);
+	m_shProj.assign_subset(m_sel.begin<Edge>(), m_sel.end<Edge>(), -1);
+	m_shProj.assign_subset(m_sel.begin<Face>(), m_sel.end<Face>(), -1);
+	m_shProj.assign_subset(m_sel.begin<Volume>(), m_sel.end<Volume>(), -1);
+
 	// adjust subset index for new front
 	replace_subsets(vrts.begin(), vrts.end(), vExtrudeSI, vNewFrontSI, true);
 	replace_subsets(edges.begin(), edges.end(), vExtrudeSI, vNewFrontSI, true);
