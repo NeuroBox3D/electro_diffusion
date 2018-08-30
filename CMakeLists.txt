@@ -39,6 +39,7 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp_upwind.cpp
             morpho_gen.cpp
             pnp_smoother.cpp
+            redistribution_util.cpp
    )
 
 if (PARALLEL)
