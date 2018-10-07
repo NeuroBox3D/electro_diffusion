@@ -37,8 +37,9 @@
 	#include "pcl/pcl_base.h"                                       // for NumProcs
 #endif
 
-#include "../MembranePotentialMapping/vm2ug_rework.h"               // for Mapper
-
+#ifdef NPWithMPM
+	#include "../MembranePotentialMapping/vm2ug_rework.h"               // for Mapper
+#endif
 
 namespace ug {
 namespace nernst_planck {
@@ -361,9 +362,10 @@ void exportSolution
 // import solution command //
 // /////////////////////// //
 
+#ifdef NPWithMPM
 // helper function
 template <typename TGridFunction, typename TBaseElem>
-void importSolution
+static void importSolution
 (
 	SmartPtr<TGridFunction> solution,
 	size_t si,
@@ -412,6 +414,7 @@ void importSolution
 		}
 	}
 }
+#endif
 
 template <typename TGridFunction>
 void importSolution
@@ -422,6 +425,10 @@ void importSolution
 	const char* inFileBaseName
 )
 {
+#ifndef NPWithMPM
+	UG_THROW("importSolution uses functionality from the MembranePotentialMapping plugin,"
+		"but ewas not compiled with it.");
+#else
 	typedef typename TGridFunction::domain_type domain_type;
 	typedef typename domain_type::position_type pos_type;
 
@@ -483,6 +490,7 @@ void importSolution
 				importSolution<TGridFunction, Volume>(solution, ssGrp[si], fctGrp[fi], valueProvider);
 		}
 	}
+#endif
 }
 
 

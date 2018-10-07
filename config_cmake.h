@@ -18,6 +18,7 @@
 #endif
 
 #cmakedefine NPParmetis
+#cmakedefine NPWithMPM
 
 
 

@@ -51,6 +51,11 @@ if (Parmetis)
 endif (Parmetis)
 
 
+if (MembranePotentialMapping)
+	set(NPWithMPM 1)
+endif (MembranePotentialMapping)
+
+
 # error if tetgen libs/includes are not found
 if (NPTetgen)
 	UGInstall("tetgen" TETGEN15_PATH)
@@ -118,8 +123,10 @@ else(buildEmbeddedPlugins)
 		set(additionalLibs ${additionalLibs} ${TETGEN15_LIBS})
 	endif (NPTetgen)
 	
-	# add MPM to linker (importCommand, remove that in time)
-	set (additionalLibs ${additionalLibs} MembranePotentialMapping)
+	# make plugin link against MPM
+	if (MembranePotentialMapping)
+		set(additionalLibs MembranePotentialMapping ${additionalLibs})
+	endif (MembranePotentialMapping)
 	
 	# add Parmetis to linker (if built alongside)
 	if (Parmetis)
