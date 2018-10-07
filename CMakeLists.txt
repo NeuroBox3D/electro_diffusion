@@ -82,15 +82,12 @@ endif (NPTetgen)
 # This will copy the configurable file config_cmake.h to
 # the final configuration header np_config.h,
 # setting the #defines as given by the current CMake variables.
-configure_file(config_cmake.h np_config.h)
+configure_file(config_cmake.h ${CMAKE_BINARY_DIR}/np_config.h)
 
 
 if(buildEmbeddedPlugins)
 	# add the sources to ug4's sources
 	ExportSources(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
-
-	# add include path for np_config.h
-	ExportIncludes(${CMAKE_CURRENT_BINARY_DIR})
 	
 	if (NPTetgen)
 		# add definition for tetgen usage to morpho_gen.cpp
@@ -109,9 +106,6 @@ else(buildEmbeddedPlugins)
 	# create a shared library from the sources and link it against ug4 and external libraries
 	add_library(nernst_planck SHARED ${SOURCES})
 
-	# add include path for np_config.h
-	include_directories(${CMAKE_CURRENT_BINARY_DIR})
-	
 	if (NPTetgen)
 		# add definition for tetgen usage to morpho_gen.cpp
 		#set_property(SOURCE morpho_gen.cpp APPEND PROPERTY COMPILE_DEFINITIONS "TETGEN_15_ENABLED;TETLIBRARY")
