@@ -39,7 +39,6 @@ set(SOURCES nernst_planck_plugin.cpp
             pnp_upwind.cpp
             morpho_gen.cpp
             pnp_smoother.cpp
-            redistribution_util.cpp
             neck_recorder.cpp
             refinement_error_estimator.cpp
    )
@@ -49,7 +48,7 @@ if (APPLE)
 endif (APPLE)
 
 if (PARALLEL)
-	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp) 
+	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp redistribution_util.cpp)
 endif (PARALLEL)
 
 if (Parmetis)

@@ -381,9 +381,9 @@ bool PNPSmoother<TDomain, TAlgebra, TPrecond>::step
 	else if (m_ps == 2)	// restricted additive Schwarz (RAS)
 		c.set_storage_type(PST_UNIQUE); // solution is not really unique, but we ignore non-master corrections
 	else UG_THROW("Invalid parallelization strategy " << m_ps << ".");
-#endif
 
 	c.change_storage_type(PST_CONSISTENT);
+#endif
 
 	return success;
 }

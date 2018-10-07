@@ -15,8 +15,10 @@
 #include "common/error.h"                                            // for UG_COND_...
 #include "common/math/math_vector_matrix/math_matrix.h"              // for MathMatrix
 #include "common/math/math_vector_matrix/math_vector_functions.h"    // for VecScale...
-#include "lib_algebra/parallelization/parallel_storage_type.h"       // for Parallel...
-#include "lib_algebra/parallelization/parallelization_util.h"        // for MatMakeConsistentOverlap0
+#ifdef UG_PARALLEL
+	#include "lib_algebra/parallelization/parallel_storage_type.h"       // for Parallel...
+	#include "lib_algebra/parallelization/parallelization_util.h"        // for MatMakeConsistentOverlap0
+#endif
 #include "lib_disc/common/groups_util.h"                             // for CreateFunctionIndexMapping...
 #include "lib_disc/common/multi_index.h"                             // for DoFIndex
 #include "lib_disc/dof_manager/dof_distribution.h"                   // for DoFDistr...
@@ -315,9 +317,10 @@ void FluxExporter<TGridFunction>::write_box_fluxes
 		m_hangingConstraintBoxFlux->adjust_jacobian(m_fluxMatrix, dummy, m_ddBoxFluxes, CT_HANGING);
 	}
 
+#ifdef UG_PARALLEL
 	// make consistent
 	MatMakeConsistentOverlap0(m_fluxMatrix);
-
+#endif
 
 // save flux map contents to .csv file
 
