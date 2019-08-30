@@ -2,7 +2,7 @@
  * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
  * Author: Markus Breit
- * Creation date: 2016-09-22
+ * Creation date: 2015-08-12
  *
  * This file is part of NeuroBox, which is based on UG4.
  *
@@ -37,22 +37,56 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
-#define UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+#ifndef UG__PLUGINS__NERNST_PLANCK__UTIL__ORDER_H
+#define UG__PLUGINS__NERNST_PLANCK__UTIL__ORDER_H
 
-#cmakedefine NPTetgen
-#ifdef NPTetgen
-	#ifndef TETGEN_15_ENABLED
-		#define TETGEN_15_ENABLED
-	#endif
-	#ifndef TETLIBRARY
-		#define TETLIBRARY
-	#endif
-#endif
+#include <cstddef>                                     // for size_t
+#include <vector>                                      // for vector
 
-#cmakedefine NPParmetis
-#cmakedefine NPWithMPM
+#include "common/util/smart_pointer.h"                 // for SmartPtr, ConstSmartPtr
+#include "lib_grid/tools/subset_group.h"               // for SubsetGroup
+#include "lib_grid/tools/subset_handler_multi_grid.h"  // for MGSubsetHandler
 
 
+namespace ug {
 
-#endif // UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+// forward declarations
+class DoFDistribution;
+template <typename TDomain> class ApproximationSpace;
+
+namespace nernst_planck {
+
+
+template <typename TBaseElem>
+void collect_obj_indices
+(
+	std::vector<int>& vObjInd,
+	SmartPtr<DoFDistribution> dd,
+	ConstSmartPtr<MGSubsetHandler> sh,
+	const SubsetGroup& csg
+);
+
+template <typename TDomain>
+void reorder_dofs(SmartPtr<ApproximationSpace<TDomain> > approxSpace, const char* constrained);
+
+
+/**
+ * This function implements algorithm LEX M from
+ * Rose et al.: "Algorithmic aspects of vertex elimination on graphs"
+**/
+void lex_order
+(
+	std::vector<size_t>& newIndOut,
+	const std::vector<std::vector<size_t> >& vAdj,
+	bool preserveConsec = true
+);
+
+template <typename TDomain>
+void reorder_dof_distros_lex(SmartPtr<ApproximationSpace<TDomain> > approx);
+
+
+
+} // namespace nernst_planck
+} // namespace ug
+
+#endif // UG__PLUGINS__NERNST_PLANCK__UTIL__ORDER_H

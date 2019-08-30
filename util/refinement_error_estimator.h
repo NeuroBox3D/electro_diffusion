@@ -2,7 +2,7 @@
  * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
  * Author: Markus Breit
- * Creation date: 2016-09-22
+ * Creation date: 2018-06-13
  *
  * This file is part of NeuroBox, which is based on UG4.
  *
@@ -37,22 +37,63 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
-#define UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
-
-#cmakedefine NPTetgen
-#ifdef NPTetgen
-	#ifndef TETGEN_15_ENABLED
-		#define TETGEN_15_ENABLED
-	#endif
-	#ifndef TETLIBRARY
-		#define TETLIBRARY
-	#endif
-#endif
-
-#cmakedefine NPParmetis
-#cmakedefine NPWithMPM
+#ifndef UG__PLUGINS__NERNST_PLANCK__UTIL__REFINEMENT_ERROR_ESTIMATOR_H
+#define UG__PLUGINS__NERNST_PLANCK__UTIL__REFINEMENT_ERROR_ESTIMATOR_H
 
 
+#include <cstddef>  // for size_t
 
-#endif // UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+#include "common/util/smart_pointer.h"  // for SmartPtr
+#include "lib_grid/grid_objects/grid_dim_traits.h"  // for grid_dim_traits
+#include "lib_grid/grid/grid.h"  // for AttachmentAccessor
+#include "lib_grid/refinement/refiner_interface.h"  // for IRefiner
+#include "lib_disc/dof_manager/dof_distribution.h"  // for DoFDistribution
+#include "lib_disc/function_spaces/grid_function.h"  // for GridFunction
+#include "lib_disc/function_spaces/error_elem_marking_strategy.h"  // for IElementMarkingStrategy
+
+namespace ug {
+namespace nernst_planck {
+
+template <typename TDomain, typename TAlgebra>
+class RefinementErrorEstimator
+{
+	public:
+		static const int dim = TDomain::dim;
+		typedef GridFunction<TDomain, TAlgebra> TGridFunction;
+
+	public:
+		RefinementErrorEstimator();
+		virtual ~RefinementErrorEstimator();
+
+		number compute_elementwise_errors
+		(
+			SmartPtr<TGridFunction> uFine,
+			SmartPtr<TGridFunction> uCoarse,
+			size_t cmp
+		);
+
+		SmartPtr<TGridFunction> error_grid_function(SmartPtr<TDomain> dom);
+
+		void mark_with_strategy
+		(
+			IRefiner& refiner,
+			SmartPtr<IElementMarkingStrategy<TDomain > > markingStrategy
+		);
+
+
+	private:
+		typedef typename grid_dim_traits<dim>::element_type elem_type;
+		typedef MultiGrid::AttachmentAccessor<elem_type, Attachment<number> > aa_type;
+
+		ConstSmartPtr<DoFDistribution> m_spDD;
+
+		Attachment<number> m_aError;
+		aa_type m_aaError;
+
+		bool m_bErrorsCalculated;
+};
+
+} // namespace nernst_planck
+} // namespace ug
+
+#endif // UG__PLUGINS__NERNST_PLANCK__UTIL__REFINEMENT_ERROR_ESTIMATOR_H

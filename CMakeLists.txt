@@ -1,3 +1,43 @@
+##
+ # Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
+ #
+ # Author: Markus Breit
+ # Creation date: 2013
+ #
+ # This file is part of NeuroBox, which is based on UG4.
+ #
+ # NeuroBox and UG4 are free software: You can redistribute it and/or modify it
+ # under the terms of the GNU Lesser General Public License version 3
+ # (as published by the Free Software Foundation) with the following additional
+ # attribution requirements (according to LGPL/GPL v3 §7):
+ #
+ # (1) The following notice must be displayed in the appropriate legal notices
+ # of covered and combined works: "Based on UG4 (www.ug4.org/license)".
+ #
+ # (2) The following notice must be displayed at a prominent place in the
+ # terminal output of covered works: "Based on UG4 (www.ug4.org/license)".
+ #
+ # (3) The following bibliography is recommended for citation and must be
+ # preserved in all covered files:
+ # "Reiter, S., Vogel, A., Heppner, I., Rupp, M., and Wittum, G. A massively
+ #   parallel geometric multigrid solver on hierarchically distributed grids.
+ #   Computing and visualization in science 16, 4 (2013), 151-164"
+ # "Vogel, A., Reiter, S., Rupp, M., Nägel, A., and Wittum, G. UG4 -- a novel
+ #   flexible software system for simulating PDE based models on high performance
+ #   computers. Computing and visualization in science 16, 4 (2013), 165-179"
+ # "Stepniewski, M., Breit, M., Hoffer, M. and Queisser, G.
+ #   NeuroBox: computational mathematics in multiscale neuroscience.
+ #   Computing and visualization in science (2019).
+ # "Breit, M. et al. Anatomically detailed and large-scale simulations studying
+ #   synapse loss and synchrony using NeuroBox. Front. Neuroanat. 10 (2016), 8"
+ #
+ # This program is distributed in the hope that it will be useful,
+ # but WITHOUT ANY WARRANTY; without even the implied warranty of
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ # GNU Lesser General Public License for more details.
+ ##
+
+
 ################################################################################
 # NERNST PLANCK
 #
@@ -24,23 +64,20 @@ message(STATUS "      Tetgen:   ${NPTetgen} (options are: ON, OFF)")
 
 
 # sources
-set(SOURCES nernst_planck_plugin.cpp
-			nernst_planck_util.cpp
-            #pnp1d_fv1.cpp
-            #pnp1d_fv.cpp
-            electric_circuit.cpp
-            edl_1d.cpp
-            interface1d_fv.cpp
-            order.cpp
-            intf_refMarkAdjuster.cpp
-            extension_refMarkAdjuster.cpp
-            domain1d_solution_adjuster.cpp
-            flux_exporter.cpp
-            pnp_upwind.cpp
+set(SOURCES extension/domain1d_solution_adjuster.cpp
+            extension/extension_refMarkAdjuster.cpp
+            interface/interface1d_fv.cpp
+            interface/intf_refMarkAdjuster.cpp
+            util/edl_1d.cpp
+            util/flux_exporter.cpp
+            util/neck_recorder.cpp
+			util/nernst_planck_util.cpp
+            util/order.cpp
+            util/refinement_error_estimator.cpp
             morpho_gen.cpp
+            nernst_planck_plugin.cpp
             pnp_smoother.cpp
-            neck_recorder.cpp
-            refinement_error_estimator.cpp
+            pnp_upwind.cpp
    )
    
 if (APPLE)
@@ -55,7 +92,7 @@ endif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
 
 if (PARALLEL)
-	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp redistribution_util.cpp)
+	set(SOURCES ${SOURCES} interface/intf_distro_adjuster.cpp)
 endif (PARALLEL)
 
 if (Parmetis)
@@ -101,12 +138,7 @@ if(buildEmbeddedPlugins)
 	# add the sources to ug4's sources
 	ExportSources(${CMAKE_CURRENT_SOURCE_DIR} ${SOURCES})
 	
-	if (NPTetgen)
-		# add definition for tetgen usage to morpho_gen.cpp
-		# Unfortunately, this still results in the whole target (i.e., all of ug)
-		# to be recompiled. This is a known issue when creating MakeFiles with CMake.
-		#ExportSingleFileCompileFlags(${CMAKE_CURRENT_SOURCE_DIR}/morpho_gen.cpp "TETGEN_15_ENABLED;TETLIBRARY")
-		
+	if (NPTetgen)		
 		# add include path for tetgen.h
 		ExportIncludes(${TETGEN15_INCLUDE_PATH})
 		
@@ -119,9 +151,6 @@ else(buildEmbeddedPlugins)
 	add_library(nernst_planck SHARED ${SOURCES})
 
 	if (NPTetgen)
-		# add definition for tetgen usage to morpho_gen.cpp
-		#set_property(SOURCE morpho_gen.cpp APPEND PROPERTY COMPILE_DEFINITIONS "TETGEN_15_ENABLED;TETLIBRARY")
-			
 		# add include path for tetgen.h
 		include_directories(${TETGEN15_INCLUDE_PATH})
 	

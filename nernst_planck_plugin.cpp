@@ -1,8 +1,40 @@
 /*
- * nernst_planck_plugin.cpp
+ * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
- *  Created on: 28.05.2014
- *      Author: mbreit
+ * Author: Markus Breit
+ * Creation date: 2014-05-28
+ *
+ * This file is part of NeuroBox, which is based on UG4.
+ *
+ * NeuroBox and UG4 are free software: You can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License version 3
+ * (as published by the Free Software Foundation) with the following additional
+ * attribution requirements (according to LGPL/GPL v3 §7):
+ *
+ * (1) The following notice must be displayed in the appropriate legal notices
+ * of covered and combined works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (2) The following notice must be displayed at a prominent place in the
+ * terminal output of covered works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (3) The following bibliography is recommended for citation and must be
+ * preserved in all covered files:
+ * "Reiter, S., Vogel, A., Heppner, I., Rupp, M., and Wittum, G. A massively
+ *   parallel geometric multigrid solver on hierarchically distributed grids.
+ *   Computing and visualization in science 16, 4 (2013), 151-164"
+ * "Vogel, A., Reiter, S., Rupp, M., Nägel, A., and Wittum, G. UG4 -- a novel
+ *   flexible software system for simulating PDE based models on high performance
+ *   computers. Computing and visualization in science 16, 4 (2013), 165-179"
+ * "Stepniewski, M., Breit, M., Hoffer, M. and Queisser, G.
+ *   NeuroBox: computational mathematics in multiscale neuroscience.
+ *   Computing and visualization in science (2019).
+ * "Breit, M. et al. Anatomically detailed and large-scale simulations studying
+ *   synapse loss and synchrony using NeuroBox. Front. Neuroanat. 10 (2016), 8"
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  */
 
 #include "bridge/util.h"                                    // for RegisterCommon, RegisterDimensionDependent
@@ -10,29 +42,23 @@
 #include "lib_algebra/operator/interface/preconditioner.h"  // for IPreconditioner
 #include "lib_disc/function_spaces/grid_function.h"         // for GridFunction
 
-#include "np_config.h"                                         // for #defines
-#include "domain1d_solution_adjuster.h"                     // for Domain1dSolutionAdjuster
-#include "edl_1d.h"                                         // for EDLSimulation
-#include "electric_circuit.h"                               // for ElectricCircuit
-#include "extension_refMarkAdjuster.h"                      // for ExtensionRefMarkAdjuster
-#include "flux_exporter.h"                                  // for FluxExporter
-#include "interface1d_fv.h"                                 // for IInterface1D, Interface1D, AdditiveInterface1D
+#include "np_config.h"                                      // for #defines
+#include "extension/domain1d_solution_adjuster.h"           // for Domain1dSolutionAdjuster
+#include "util/edl_1d.h"                                    // for EDLSimulation
+#include "extension/extension_refMarkAdjuster.h"            // for ExtensionRefMarkAdjuster
+#include "util/flux_exporter.h"                             // for FluxExporter
+#include "interface/interface1d_fv.h"                       // for IInterface1D, Interface1D, AdditiveInterface1D
 #ifdef UG_PARALLEL
-	#include "intf_distro_adjuster.h"                       // for PNPDistroManager, set_distro_adjuster
+	#include "interface/intf_distro_adjuster.h"             // for PNPDistroManager, set_distro_adjuster
 #endif
-#include "intf_refMarkAdjuster.h"                           // for InterfaceRefMarkAdjuster
+#include "interface/intf_refMarkAdjuster.h"                 // for InterfaceRefMarkAdjuster
 #include "morpho_gen.h"                                     // for MorphoGen
-#include "nernst_planck_util.h"                             // for adjust_geom_after_refinement, exportSolution
-#include "neck_recorder.h"									// for current and voltage recordings across spine neck
-#include "order.h"                                          // for reorder_dof_distros_lex, reorder_dofs
-#include "pnp1d_fv.h"                                       // for PNP1D_FV
-#include "pnp1d_fv1.h"                                      // for PNP1D_FV1
+#include "util/nernst_planck_util.h"                        // for adjust_geom_after_refinement, exportSolution
+#include "util/neck_recorder.h"								// for current and voltage recordings across spine neck
+#include "util/order.h"                                     // for reorder_dof_distros_lex, reorder_dofs
 #include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
 #include "pnp_upwind.h"                                     // for PNPUpwind
-#ifdef UG_PARALLEL
-	#include "redistribution_util.h"                            // for redistribute
-#endif
-#include "refinement_error_estimator.h"                     // for RefinementErrorEstimator
+#include "util/refinement_error_estimator.h"                     // for RefinementErrorEstimator
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
 #if defined (__APPLE__) || defined (__linux__)
 	#include "mem_info.h"
@@ -441,12 +467,6 @@ static void Domain(Registry& reg, string grp)
 	}
 
 	reg.add_function("add_extension_ref_mark_adjuster", &add_extension_ref_mark_adjuster<TDomain>, grp.c_str(), "", "", "");
-
-#ifdef UG_PARALLEL
-	reg.add_function("redistribute", &redistribute<TDomain>, grp.c_str(), "", "", "", "");
-#endif
-
-	//reg.add_function("test_positions", &TestPositions<TDomain>, grp.c_str(), "", "", "");
 }
 
 /**
@@ -491,28 +511,6 @@ static void Algebra(Registry& reg, string grp)
  */
 static void Common(Registry& reg, string grp)
 {
-	// ELectricCircuit
-	{
-		typedef ElectricCircuit T;
-		reg.add_class_<T>("ElectricCircuit", grp)
-			.add_constructor()
-			.add_method("add_capacitor", &T::add_capacitor)
-			.add_method("add_resistor", &T::add_resistor)
-			.add_method("add_voltage_source", &T::add_voltage_source)
-			.add_method("add_current_source", &T::add_current_source)
-			.add_method("add_initial_solution", &T::add_initial_solution)
-			.add_method("init", &T::init)
-			.add_method("update_rhs", &T::update_rhs)
-			.add_method("write_to_file", &T::write_to_file)
-			.add_method("close_file", &T::close_file)
-			.add_method("solve_stationary", &T::solve_stationary)
-			.add_method("solve_euler", &T::solve_euler)
-			.add_method("solve_trapezoid", &T::solve_trapezoid)
-			.add_method("get_solution", &T::get_solution)
-			.add_method("get_rhs", &T::get_rhs)
-			.set_construct_as_smart_pointer(true);
-	}
-
 	// EDL simulation
 	{
 		typedef EDLSimulation T;

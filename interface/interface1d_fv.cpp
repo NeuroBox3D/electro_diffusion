@@ -1,9 +1,42 @@
 /*
- * interface1d_fv.cpp
+ * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
- *  Created on: 06.06.2014
- *      Author: mbreit
+ * Author: Markus Breit
+ * Creation date: 2014-06-06
+ *
+ * This file is part of NeuroBox, which is based on UG4.
+ *
+ * NeuroBox and UG4 are free software: You can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License version 3
+ * (as published by the Free Software Foundation) with the following additional
+ * attribution requirements (according to LGPL/GPL v3 §7):
+ *
+ * (1) The following notice must be displayed in the appropriate legal notices
+ * of covered and combined works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (2) The following notice must be displayed at a prominent place in the
+ * terminal output of covered works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (3) The following bibliography is recommended for citation and must be
+ * preserved in all covered files:
+ * "Reiter, S., Vogel, A., Heppner, I., Rupp, M., and Wittum, G. A massively
+ *   parallel geometric multigrid solver on hierarchically distributed grids.
+ *   Computing and visualization in science 16, 4 (2013), 151-164"
+ * "Vogel, A., Reiter, S., Rupp, M., Nägel, A., and Wittum, G. UG4 -- a novel
+ *   flexible software system for simulating PDE based models on high performance
+ *   computers. Computing and visualization in science 16, 4 (2013), 165-179"
+ * "Stepniewski, M., Breit, M., Hoffer, M. and Queisser, G.
+ *   NeuroBox: computational mathematics in multiscale neuroscience.
+ *   Computing and visualization in science (2019).
+ * "Breit, M. et al. Anatomically detailed and large-scale simulations studying
+ *   synapse loss and synchrony using NeuroBox. Front. Neuroanat. 10 (2016), 8"
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  */
+
 
 #include "interface1d_fv.h"
 
@@ -514,52 +547,6 @@ GridObject* Interface1D<TDomain, TAlgebra>::get_constrainer_object(GridObject* c
 	}
 }
 
-
-#if 0
-template <typename TDomain, typename TAlgebra>
-template <typename TDummy>
-Interface1D<TDomain, TAlgebra>::GetConstrainer<Vertex, Vertex, Edge, TDummy>::
-GetConstrainer(Interface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out)
-{
-	UG_ASSERT(constrg_out, "Pointer to pointer to out constraining vertex (third argument) must not be NULL.")
-
-	typedef typename MultiGrid::traits<Edge>::secure_container edge_list;
-	SmartPtr<TDomain> dom = intf->approximation_space()->domain();
-
-	const typename TDomain::position_accessor_type& aaPos = dom->position_accessor();
-	const typename TDomain::position_type& constrdPos = CalculateCenter(constrd, aaPos);
-
-	// loop associated edges; find the one not in the constrained set and take other end
-	edge_list el;
-	dom->grid()->associated_elements(el, constrd);
-	for (size_t edge = 0; edge < el.size(); edge++)
-	{
-		// continue as long as edge does not point into interface direction
-		Vertex* opp;
-		if (!el[edge]->get_opposing_side(constrd, &opp)) continue;
-
-		typename TDomain::position_type oppPos = CalculateCenter(opp, aaPos);
-		VecSubtract(oppPos, constrdPos, oppPos);
-		VecNormalize(oppPos, oppPos);
-		if (VecProd(oppPos, m_direction) < 0.95)	// that is about 18 degrees off
-			continue;
-
-		/*
-		if (dom->subset_handler()->get_subset_index(el[edge]) == intf->m_siConstr
-			|| dom->subset_handler()->get_subset_index(el[edge]) == 20		// FIXME: Hack to exclude useless! Do it properly.
-			|| dom->subset_handler()->get_subset_index(el[edge]) == intf->m_siIntf[1]) // exclude 1d intf node
-			continue;
-		*/
-
-		if (!el[edge]->get_opposing_side(constrd, constrg_out))
-			UG_THROW("No opposing side found!");
-
-		return;
-	}
-
-	UG_THROW("No constrainer found!");
-}
-#endif
 
 template <typename TDomain, typename TAlgebra>
 template <typename TElem, typename TElemDesc, typename TDummy>
@@ -1229,39 +1216,6 @@ void Interface1D<TDomain, TAlgebra>::adjust_correction
 }
 
 
-/*
-template <typename TDomain, typename TAlgebra>
-void Interface1D<TDomain, TAlgebra>::adjust_restriction
-(
-	vector_type& uCoarse,
-	GridLevel coarseLvl,
-	const vector_type& uFine,
-	GridLevel fineLvl,
-	int type
-)
-{
-	// get dof distro for coarse level
-	ConstSmartPtr<DoFDistribution> dd = this->approximation_space()->dof_distribution(coarseLvl);
-
-	// get constraint info for dof distro
-	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::const_iterator CIIter;
-	CIIter ciit = m_mConstraints.find(dd.get());
-	if (ciit == m_mConstraints.end()) update(dd);
-	ConstraintInfo& cInfo = m_mConstraints[dd.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap = cInfo.constrainerMap;
-
-	// loop constrained vertices
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapEnd = constrainerMap.end();
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt = constrainerMap.begin();
-	for (; constrainerMapIt != constrainerMapEnd; ++constrainerMapIt)
-	{
-		// set to 0
-		size_t index = constrainerMapIt->first;
-		uCoarse[index] = 0.0;
-	}
-}
-*/
-
 template <typename TDomain, typename TAlgebra>
 void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 (
@@ -1287,146 +1241,6 @@ void Interface1D<TDomain, TAlgebra>::adjust_prolongation
 	typename std::map<DoFIndex, ConstrainerInfo>::iterator it_end = constrainerMap_f.end();
 	for (; it != it_end; ++it)
 		SetRow(P, it->first, 0.0);
-
-	// SCREW IT; does not work properly (and is wrong!)
-/*
-	// only adapt BEFORE hanging nodes adaption (as coarse grid node can never be hanging)
-	if (type != CT_MAY_DEPEND_ON_HANGING)
-		return;
-
-	// adjust prolongation in constrainers using correct constraint values (not zero)
-	// set prolongation for constrained nodes to 0.0
-
-	typedef typename matrix_type::row_iterator row_iterator;
-	typename std::map<size_t, ConstrainerInfo>::iterator constrainerMapIt;
-
-	// get constraint info for dof distros
-	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::iterator CIIter;
-	CIIter ciit = m_mConstraints.find(ddFine.get());
-	if (ciit == m_mConstraints.end()) update(ddFine);
-	ConstraintInfo& cInfo_f = m_mConstraints[ddFine.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap_f = cInfo_f.constrainerMap;
-
-	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::iterator CIIter;
-	ciit = m_mConstraints.find(ddCoarse.get());
-	if (ciit == m_mConstraints.end()) update(ddCoarse);
-	ConstraintInfo& cInfo_c = m_mConstraints[ddCoarse.get()];
-	std::map<size_t, ConstrainerInfo>& constrainerMap_c = cInfo_c.constrainerMap;
-
-	// loop rows
-	size_t nr = P.num_rows();
-	for (size_t i = 0; i < nr; i++)
-	{
-		// If the current row belongs to a constrained DoF (fine level),
-		// then we write a zero row (and do nothing more)
-		constrainerMapIt = constrainerMap_f.find(i);
-		if (constrainerMapIt != constrainerMap_f.end())
-		{
-			SetRow(P, i, 0.0);
-			continue;
-		}
-
-
-		// adapt current row if it depends on any constrained value
-
-		// loop existing column entries of row
-		std::vector<typename std::pair<size_t, ConstrainerInfo> > colIndices;
-		for (row_iterator rit = P.begin_row(i); rit != P.end_row(i); ++rit)
-		{
-			// if a column index is part of the constrained set, then adjust row
-			constrainerMapIt = constrainerMap_c.find(rit.index());
-
-			if (constrainerMapIt != constrainerMap_c.end())
-			{
-				// store constrained col index until row_iterator reaches end
-				colIndices.push_back(std::make_pair(rit.index(), constrainerMapIt->second));
-			}
-		}
-
-		// go through row entries again and adapt for constraints
-		for (size_t col = 0; col < colIndices.size(); col++)
-		{
-			size_t constrdInd = colIndices[col].first;
-			size_t constrgInd = colIndices[col].second.constrgInd;
-			size_t fct = colIndices[col].second.fct;
-			size_t IntfNodeHdInd = (size_t) -1;
-			size_t IntfNode1dInd = (size_t) -1;
-
-			// interface nodes might not be present in level dof distro
-			if (cInfo_c.algInd[0].size() > fct && cInfo_c.algInd[1].size() > fct)
-			{
-				IntfNodeHdInd = cInfo_c.algInd[0][fct];
-				IntfNode1dInd = cInfo_c.algInd[1][fct];
-			}
-
-			// get defect derivatives for this vertex
-			number defDeriv[3];
-			// FIXME: This will only work if constraints are linear and add up to one.
-			constraintValueDerivs(defDeriv, 1, 1, 1);
-
-			// NOTE: "If a side effect on a scalar object is unsequenced relative to either
-			//       another side effect on the same scalar object or a value computation using
-			//       the value of the same scalar object, the behavior is undefined."
-			//       (http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3690.pdf)
-			//
-			//       In both of the following expressions, we might have a side effect in the
-			//       evaluation of the lhs (entry might not be present in the CRS matrix and
-			//       would need to be created then, possibly changing the value of the memory
-			//       the rhs access to the same matrix is associated with)! The result depends
-			//       on the order in which lhs and rhs evaluation are carried out, which is
-			//       undefined.
-			//
-			//       J(i, constrgInd) += J(i, constrdInd) * defDeriv[0];
-			//		 J(i, constrgInd) = J(i, constrdInd) * defDeriv[0];
-			//
-			//       We therefore need to take extra caution:
-
-			// wrt constraining
-			if (P.has_connection(i, constrgInd))
-				P(i, constrgInd) += P(i, constrdInd) * defDeriv[0];
-			else
-			{
-				// The following must not be done!
-				// We might create the first entry in column constrg,
-				// which is the first entry in row constrg of the restriction matrix
-				// (as restriction is prolongation transposed by default)
-				// and this would mean that the assembled defect for constrg
-				// (which might be on the surface in the coarse level)
-				// would be overwritten by the restriction!
-				// Either make sure that this is not the case or leave it be.
-				//typename matrix_type::value_type help = P(i, constrdInd) * defDeriv[0];
-				//P(i, constrgInd) = help;
-			}
-
-			// wrt interface vertex on constraining side
-			if (IntfNodeHdInd != (size_t) -1)
-			{
-				if (P.has_connection(i, IntfNodeHdInd))
-					P(i, IntfNodeHdInd) += P(i, constrdInd) * defDeriv[1];
-				else
-				{
-					//typename matrix_type::value_type help = P(i, constrdInd) * defDeriv[1];
-					//P(i, IntfNodeHdInd) = help;
-				}
-			}
-
-			// wrt interface vertex on constrained side
-			if (IntfNode1dInd != (size_t) -1)
-			{
-				if (P.has_connection(i, IntfNode1dInd))
-					P(i, IntfNode1dInd) += P(i, constrdInd) * defDeriv[2];
-				else
-				{
-					//typename matrix_type::value_type help = P(i, constrdInd) * defDeriv[2];
-					//P(i, IntfNode1dInd) = help;
-				}
-			}
-
-			// wrt constrained vertex
-			P(i, constrdInd) = 0.0;
-		}
-	}
-*/
 }
 
 
@@ -1439,65 +1253,7 @@ void Interface1D<TDomain, TAlgebra>::adjust_restriction
 	int type,
 	number time
 )
-{
-	/*
-	// adjust restriction like defect,
-	// i.e. (only P1): add constrained/constrainer couplings to 1d intf node
-	// then set zero row
-
-	SmartPtr<MultiGrid> mg = this->m_spApproxSpace->domain()->grid();
-
-	// get constraint info for coarse dof distro (for 1d intf node indices)
-	typedef typename std::map<const DoFDistribution*, ConstraintInfo>::const_iterator CIIter;
-	CIIter ciit = m_mConstraints.find(ddCoarse.get());
-	if (ciit == m_mConstraints.end()) update(ddCoarse);
-	ConstraintInfo& cInfo = m_mConstraints[ddCoarse.get()];
-
-
-	// loop constrained elements (coarse)
-	typename DoFDistribution::traits<Vertex>::const_iterator iter, iterEnd;
-	iter = ddCoarse->begin<Vertex>(m_siConstr);
-	iterEnd = ddCoarse->end<Vertex>(m_siConstr);
-
-	for (; iter != iterEnd; ++iter)
-	{
-		// get constrained elem
-		Vertex* constrd = *iter;
-
-		// get parent of constrained
-		Vertex* constrd_parent = dynamic_cast<Vertex*>(mg->get_parent(constrd));
-		if (!constrd_parent) continue;
-
-		// get constrainer of parent
-		Vertex* constrg = get_constrainer<Vertex, Edge>(constrd_parent);
-
-		// find indices
-		// loop functions
-		size_t numFct = m_vFct.size();
-		for (size_t fct = 0; fct < numFct; fct++)
-		{
-			const size_t fct_ind = m_vFct[fct];
-
-			// get inner DoF indices
-			std::vector<DoFIndex> constrdInd;
-			std::vector<DoFIndex> constrgInd;
-			ddCoarse->inner_dof_indices(constrd, fct_ind, constrdInd, false);
-			ddFine->inner_dof_indices(constrg, fct_ind, constrgInd, false);
-
-			UG_COND_THROW(constrdInd.size() != 1,
-				"Not exactly one index for constrained vertex (" << constrdInd.size() << " instead).");
-			UG_COND_THROW(constrgInd.size() != 1,
-				"Not exactly one index for constrainer vertex (" << constrgInd.size() << " instead).");
-
-			// add restrictive coupling between coarse constrained and fine constrainer to 1d intf node
-			R(cInfo.algInd[1][fct], constrgInd[0][0]) += R(constrdInd[0][0], constrgInd[0][0]);
-
-			// set zero row
-			SetRow(R, constrdInd[0], 0.0);
-		}
-	}
-*/
-}
+{}
 
 
 

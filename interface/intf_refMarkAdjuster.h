@@ -2,7 +2,7 @@
  * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
  * Author: Markus Breit
- * Creation date: 2016-09-22
+ * Creation date: 2016-04-29
  *
  * This file is part of NeuroBox, which is based on UG4.
  *
@@ -37,22 +37,62 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
-#define UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+#ifndef UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTF_REFMARKADJUSTER_H
+#define UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTF_REFMARKADJUSTER_H
 
-#cmakedefine NPTetgen
-#ifdef NPTetgen
-	#ifndef TETGEN_15_ENABLED
-		#define TETGEN_15_ENABLED
-	#endif
-	#ifndef TETLIBRARY
-		#define TETLIBRARY
-	#endif
-#endif
+#include <vector>                                             // for vector, allocator
 
-#cmakedefine NPParmetis
-#cmakedefine NPWithMPM
+#include "common/util/smart_pointer.h"                        // for SmartPtr, ConstSmartPtr
+#include "interface1d_fv.h"                                   // for IInterface1D
+#include "lib_grid/refinement/ref_mark_adjuster_interface.h"  // for IRefMarkAdjuster
+#include "lib_grid/tools/subset_handler_interface.h"          // for ISubsetHandler
 
 
+namespace ug {
 
-#endif // UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+// forward declarations
+class Vertex;
+class Edge;
+class Face;
+class Volume;
+class IRefiner;
+
+namespace nernst_planck {
+
+
+class InterfaceRefMarkAdjuster
+	: public IRefMarkAdjuster
+{
+	public:
+		InterfaceRefMarkAdjuster() : IRefMarkAdjuster()	{}
+
+		virtual ~InterfaceRefMarkAdjuster()	{}
+
+		void add_interfaces(const std::vector<SmartPtr<IInterface1D> >& vI)
+		{m_vIntf = vI;}
+
+		void set_subset_handler(ConstSmartPtr<ISubsetHandler> ssh)
+		{m_ssh = ssh;}
+
+		virtual void ref_marks_changed
+		(
+			IRefiner& ref,
+			const std::vector<Vertex*>& vrts,
+			const std::vector<Edge*>& edges,
+			const std::vector<Face*>& faces,
+			const std::vector<Volume*>& vols
+		);
+
+	private:
+		std::vector<SmartPtr<IInterface1D> > m_vIntf;
+
+		ConstSmartPtr<ISubsetHandler> m_ssh;
+};
+
+void add_interface_ref_mark_adjuster(IRefiner* ref, SmartPtr<InterfaceRefMarkAdjuster> irma);
+
+
+} // namespace nernst_planck
+} // namespace ug
+
+#endif // UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTF_REFMARKADJUSTER_H

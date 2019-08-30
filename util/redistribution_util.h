@@ -2,7 +2,7 @@
  * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
  * Author: Markus Breit
- * Creation date: 2016-09-22
+ * Creation date: 2018-03-19
  *
  * This file is part of NeuroBox, which is based on UG4.
  *
@@ -37,22 +37,31 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
-#define UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+#ifndef UG__PLUGINS__NERNST_PLANCK__UTIL__REDISTRIBUTION_UTIL_H
+#define UG__PLUGINS__NERNST_PLANCK__UTIL__REDISTRIBUTION_UTIL_H
 
-#cmakedefine NPTetgen
-#ifdef NPTetgen
-	#ifndef TETGEN_15_ENABLED
-		#define TETGEN_15_ENABLED
-	#endif
-	#ifndef TETLIBRARY
-		#define TETLIBRARY
-	#endif
-#endif
-
-#cmakedefine NPParmetis
-#cmakedefine NPWithMPM
+#include <cstddef>  // for size_t
+#include "common/util/smart_pointer.h"  // for SmartPtr
+#include "lib_disc/parallelization/domain_load_balancer.h"  // for DomainLoadBalancer
 
 
+namespace ug {
+namespace nernst_planck {
 
-#endif // UG__PLUGINS__NERNST_PLANCK__CONFIG_CMAKE_H
+template <typename TDomain>
+void redistribute
+(
+	ConstSmartPtr<TDomain> dom,
+	SmartPtr<DomainLoadBalancer<TDomain> > loadBalancer,
+	const std::string& qualityRecordName,
+	size_t firstDistLevel,
+	size_t maxDistLevel,
+	size_t redistStep,
+	size_t minElems,
+	size_t nodeSize
+);
+
+} // namespace nernst_planck
+} // namespace ug
+
+#endif // UG__PLUGINS__NERNST_PLANCK__UTIL__REDISTRIBUTION_UTIL_H

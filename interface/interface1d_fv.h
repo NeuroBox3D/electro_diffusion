@@ -1,12 +1,45 @@
 /*
- * interface1d_fv.h
+ * Copyright (c) 2009-2019: G-CSC, Goethe University Frankfurt
  *
- *  Created on: 06.06.2014
- *      Author: mbreit
+ * Author: Markus Breit
+ * Creation date: 2014-06-06
+ *
+ * This file is part of NeuroBox, which is based on UG4.
+ *
+ * NeuroBox and UG4 are free software: You can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License version 3
+ * (as published by the Free Software Foundation) with the following additional
+ * attribution requirements (according to LGPL/GPL v3 §7):
+ *
+ * (1) The following notice must be displayed in the appropriate legal notices
+ * of covered and combined works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (2) The following notice must be displayed at a prominent place in the
+ * terminal output of covered works: "Based on UG4 (www.ug4.org/license)".
+ *
+ * (3) The following bibliography is recommended for citation and must be
+ * preserved in all covered files:
+ * "Reiter, S., Vogel, A., Heppner, I., Rupp, M., and Wittum, G. A massively
+ *   parallel geometric multigrid solver on hierarchically distributed grids.
+ *   Computing and visualization in science 16, 4 (2013), 151-164"
+ * "Vogel, A., Reiter, S., Rupp, M., Nägel, A., and Wittum, G. UG4 -- a novel
+ *   flexible software system for simulating PDE based models on high performance
+ *   computers. Computing and visualization in science 16, 4 (2013), 165-179"
+ * "Stepniewski, M., Breit, M., Hoffer, M. and Queisser, G.
+ *   NeuroBox: computational mathematics in multiscale neuroscience.
+ *   Computing and visualization in science (2019).
+ * "Breit, M. et al. Anatomically detailed and large-scale simulations studying
+ *   synapse loss and synchrony using NeuroBox. Front. Neuroanat. 10 (2016), 8"
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  */
 
-#ifndef UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
-#define UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
+
+#ifndef UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTERFACE1D_FV_H
+#define UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTERFACE1D_FV_H
 
 #include <cstddef>                                                   // for size_t, NULL
 #include <cmath>                                                     // for fabs
@@ -195,52 +228,6 @@ class Interface1D
 	: public IDomainConstraint<TDomain, TAlgebra>,
 	  public IInterface1D
 {
-	#if 0
-	public:
-		// nested class for mapping local "shadow" DoFs to global 1D interface DoF
-		class Interface1DMapper : public ILocalToGlobalMapper<TAlgebra>
-		{
-			public:
-				///	algebra type
-				typedef TAlgebra algebra_type;
-
-				///	type of algebra matrix
-				typedef typename algebra_type::matrix_type matrix_type;
-
-				///	type of algebra vector
-				typedef typename algebra_type::vector_type vector_type;
-
-				/// type of the interface
-				typedef Interface1D<TDomain,TAlgebra> interface_type;
-
-			public:
-				///	default constructor
-				Interface1DMapper(SmartPtr<IAssemble<TAlgebra> > ass);
-
-				///	destructor
-				virtual ~Interface1DMapper() {};
-
-				///	adds a local vector to the global one
-				virtual void add_local_vec_to_global(vector_type& vec, const LocalVector& lvec, ConstSmartPtr<DoFDistribution> dd);
-
-				///	adds a local matrix to the global one
-				virtual void add_local_mat_to_global(matrix_type& mat, const LocalMatrix& lmat, ConstSmartPtr<DoFDistribution> dd);
-
-				///	modifies local solution vector for adapted defect computation (we do not require this here)
-				virtual void modify_LocalSol(LocalVector& vecMod, const LocalVector& lvec, ConstSmartPtr<DoFDistribution> dd) {};
-
-				/// adds an interface to the mapper
-				void add_interface(SmartPtr<interface_type> intf);
-			private:
-				std::vector<SmartPtr<interface_type> > m_vspInterface;
-		};
-
-
-	// make private members accessible for mapper class (esp. for accessing index values)
-	friend class Interface1DMapper;
-
-	#endif
-
 	public:
 		/// own type
 		typedef Interface1D<TDomain, TAlgebra> this_type;
@@ -589,37 +576,6 @@ class Interface1D
 		template <typename TElem, typename TContainingElem>
 		TElem* get_constrainer(TElem* constrd);
 
-#if 0
-		/// computes the constrainer of a constrained element
-		/**
-		 *  The element can be any type of element contained in the constrained subset.
-		 *  Its constrainer is defined as the unique element of the same type and same
-		 *  dimension (dim) such that there is a base element of dimension (dim+1) not
-		 *  contained in the constrained subsets which connects constrained and constraining
-		 *  element.
-		 *
-		 *  This method is used when the constraintMap is being filled.
-		 *
-		 * @note Why usage of structs and Dummy template?
-		 *		 Implementation is realized using that partial specialization of nested template
-		 *		 structs is allowed (in contrast to specialization of templated methods) in not
-		 *		 fully specialized template classes.
-		 */
-		/// @{
-		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy = void>
-		struct GetConstrainer
-		{
-			GetConstrainer(Interface1D<TDomain, TAlgebra>* const intf, TElem* constrd, TElem** constrg_out);
-		};
-		template <typename TDummy>
-		struct GetConstrainer<Vertex, Vertex, Edge, TDummy>
-		{
-			GetConstrainer(Interface1D<TDomain, TAlgebra>* const intf, Vertex* constrd, Vertex** constrg_out);
-		};
-		/// @}
-		template <typename TElem, typename TElemDesc, typename TContainingElem, typename TDummy>
-		friend struct GetConstrainer;
-#endif
 
 		/// computes the target descriptor for a constrained element
 		/**
@@ -953,4 +909,4 @@ class MultiplicativeInterface1D: public Interface1D<TDomain, TAlgebra>
 } // namespace ug
 
 
-#endif // UG__PLUGINS__EXPERIMENTAL__NERNST_PLANCK__INTERFACE1D_FV_H
+#endif // UG__PLUGINS__NERNST_PLANCK__INTERFACE__INTERFACE1D_FV_H
