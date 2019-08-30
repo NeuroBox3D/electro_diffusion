@@ -98,7 +98,7 @@ if(buildEmbeddedPlugins)
 		# add definition for tetgen usage to morpho_gen.cpp
 		# Unfortunately, this still results in the whole target (i.e., all of ug)
 		# to be recompiled. This is a known issue when creating MakeFiles with CMake.
-		#ExportSingleFileDefinitions(${CMAKE_CURRENT_SOURCE_DIR}/morpho_gen.cpp "TETGEN_15_ENABLED;TETLIBRARY")
+		#ExportSingleFileCompileFlags(${CMAKE_CURRENT_SOURCE_DIR}/morpho_gen.cpp "TETGEN_15_ENABLED;TETLIBRARY")
 		
 		# add include path for tetgen.h
 		ExportIncludes(${TETGEN15_INCLUDE_PATH})
