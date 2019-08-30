@@ -34,7 +34,7 @@
 #endif
 #include "refinement_error_estimator.h"                     // for RefinementErrorEstimator
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
-#ifdef __APPLE__
+#if defined (__APPLE__) || defined (__linux__)
 	#include "mem_info.h"
 #endif
 
@@ -572,7 +572,7 @@ static void Common(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 	}
 
-#ifdef __APPLE__
+#if defined (__APPLE__) || defined (__linux__)
 	// MemInfo
 	{
 		typedef MemInfo T;
@@ -584,6 +584,8 @@ static void Common(Registry& reg, string grp)
 			.add_method("local_virtual_memory", &T::local_virtual_memory, "", "", "")
 			.add_method("global_resident_memory", &T::global_resident_memory, "", "", "")
 			.add_method("global_virtual_memory", &T::global_virtual_memory, "", "", "")
+			.add_method("max_resident_memory", &T::max_resident_memory, "", "", "")
+			.add_method("max_virtual_memory", &T::max_virtual_memory, "", "", "")
 
 			.set_construct_as_smart_pointer(true);
 	}

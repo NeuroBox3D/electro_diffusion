@@ -44,8 +44,15 @@ set(SOURCES nernst_planck_plugin.cpp
    )
    
 if (APPLE)
-	set(SOURCES ${SOURCES} mem_info.cpp)
+	set(SOURCES ${SOURCES} mem_info.cpp mem_info_apple.cpp)
 endif (APPLE)
+
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	set(SOURCES ${SOURCES} mem_info.cpp mem_info_linux.cpp)
+endif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+
+
+
 
 if (PARALLEL)
 	set(SOURCES ${SOURCES} intf_distro_adjuster.cpp redistribution_util.cpp)
