@@ -55,6 +55,7 @@
 #include "lib_disc/common/function_group.h"                                // for FunctionGroup
 #include "lib_disc/common/local_algebra.h"                                 // for LocalVector
 #include "lib_disc/function_spaces/grid_function.h"                        // for GridFunction
+#include "lib_disc/io/vtkoutput.h"                                         // for VTKOutput
 #include "lib_disc/local_finite_element/local_finite_element_id.h"         // for LFEID
 #include "lib_disc/spatial_disc/constraints/continuity_constraints/p1_continuity_constraints.h"  // for SymP1Constraint...
 #include "lib_grid/grid/grid_base_objects.h"                               // for GridObject (pt...
@@ -67,7 +68,6 @@ namespace ug {
 
 // forward declarations
 class MultiGrid;
-template <int TDim> class VTKOutput;
 template <int dim> class IConvectionShapes;
 template <typename TAlgebra> class IConstraint;
 

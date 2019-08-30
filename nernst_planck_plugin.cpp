@@ -59,7 +59,6 @@
 #include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
 #include "pnp_upwind.h"                                     // for PNPUpwind
 #include "util/refinement_error_estimator.h"                     // for RefinementErrorEstimator
-#include "vtk_export_ho.h"                                  // for vtk_export_ho
 
 
 using namespace std;
@@ -121,22 +120,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			"writes values for the given function and on the given subsets "
 			"from the given file to the given solution vector "
 			"(using the value of the nearest neighbor for each vertex)");
-	}
-
-	// vtk export for higher order grid functions
-	{
-		reg.add_function("vtk_export_ho",
-			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
-				SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*)>
-				(&vtk_export_ho<TGridFunction>),
-			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
-			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
-		reg.add_function("vtk_export_ho",
-			static_cast<void (*) (SmartPtr<TGridFunction>, const std::vector<std::string>&, size_t,
-				SmartPtr<VTKOutput<TGridFunction::domain_type::dim> >, const char*, size_t, number)>
-				(&vtk_export_ho<TGridFunction>),
-			grp.c_str(), "new grid function", "input grid function#functions to be exported#order",
-			"creates a grid function of order 1 containing interpolated values from high-order input grid function on a refined grid");
 	}
 
 

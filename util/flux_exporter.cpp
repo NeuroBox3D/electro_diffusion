@@ -60,6 +60,7 @@
 #include "lib_disc/domain_util.h"                                    // for FillCornerCoordinates
 #include "lib_disc/function_spaces/approximation_space.h"            // for ApproximationSpace
 #include "lib_disc/function_spaces/dof_position_util.h"              // for DoFPosition
+#include "lib_disc/io/vtk_export_ho.h"                               // for vtk_export_ho
 #include "lib_disc/spatial_disc/ass_tuner.h"                         // for ConstraintType...
 #include "lib_disc/spatial_disc/constraints/constraint_interface.h"  // for IConstraint
 #include "lib_disc/spatial_disc/disc_util/conv_shape.h"              // for Convecti...
@@ -75,7 +76,6 @@
 	#include "pcl/pcl_process_communicator.h"                        // for ProcessCommunicator
 #endif
 
-#include "../vtk_export_ho.h"                                           // for vtk_export_ho
 #include "choose_fvgeom.h"
 
 namespace ug {
@@ -83,7 +83,6 @@ namespace ug {
 // forward declarations
 class Octahedron;
 class Pyramid;
-template <int TDim> class VTKOutput;
 template <int dim> class IConvectionShapes;
 
 namespace nernst_planck {
