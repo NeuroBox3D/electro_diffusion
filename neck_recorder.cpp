@@ -138,7 +138,7 @@ static int hangingCornerStateCoarse
 	number refLenSq
 )
 {
-	// find constraingin edge
+	// find constraining edge
 	const typename TDomain::position_accessor_type aaPos = dom->position_accessor();
 	size_t ne = elem->num_edges();
 	EdgeDescriptor ed;
@@ -1540,10 +1540,10 @@ void NeckRecorder<TDomain, TAlgebra>::record_current
 				outFile << "\t" << current_elec;
 				if (m_bIndividualCurrents)
 				{
-					outFile << "\t" << currentK_diff + currentK_elec;
-					outFile << "\t" << currentNa_diff + currentNa_elec;
-					outFile << "\t" << currentCl_diff + currentCl_elec;
-					outFile << "\t" << currentA_diff + currentA_elec;
+					outFile << "\t" << currentK_diff << "\t" << currentK_elec;
+					outFile << "\t" << currentNa_diff << "\t" << currentNa_elec;
+					outFile << "\t" << currentCl_diff << "\t" << currentCl_elec;
+					outFile << "\t" << currentA_diff << "\t" << currentA_elec;
 				}
 				outFile << "\n";
 			}
