@@ -8,9 +8,11 @@
 #ifndef UG__PLUGINS__NERNST_PLANCK__NECK_RECORDER_H
 #define UG__PLUGINS__NERNST_PLANCK__NECK_RECORDER_H
 
+#include "common/math/math_vector_matrix/math_vector.h"  // MathVector
 #include "common/types.h"  // number
 #include "common/util/smart_pointer.h"  // SmartPtr
 
+#include "lib_disc/common/multi_index.h"  // DoFIndex
 #include "lib_disc/function_spaces/approximation_space.h"  // ApproximationSpace
 #include "lib_disc/function_spaces/grid_function.h"  // ApproximationSpace
 #include "lib_disc/spatial_disc/disc_util/conv_shape_interface.h"  // IConvectionShapes
