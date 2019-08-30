@@ -1525,6 +1525,17 @@ void Interface1D<TDomain, TAlgebra>::adjust_restriction
 		template class Interface1D<Domain3d, CPUBlockAlgebra<5> >;
 	#endif
 #endif
+#ifdef UG_CPU_6
+	#ifdef UG_DIM_1
+		template class Interface1D<Domain1d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class Interface1D<Domain2d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class Interface1D<Domain3d, CPUBlockAlgebra<6> >;
+	#endif
+#endif
 
 
 

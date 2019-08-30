@@ -861,6 +861,11 @@ void PNPSmoother<TDomain, TAlgebra, TPrecond>::my_clone(SmartPtr<ILinearIterator
 		template class PNPSmoother<Domain1d, CPUBlockAlgebra<5>, GaussSeidel>;
 		//template class PNP_ILU<Domain1d, CPUBlockAlgebra<5> >;
 	#endif
+	#ifdef UG_CPU_6
+		template class PNPSmoother<Domain1d, CPUBlockAlgebra<6>, ILU>;
+		template class PNPSmoother<Domain1d, CPUBlockAlgebra<6>, GaussSeidel>;
+		//template class PNP_ILU<Domain1d, CPUBlockAlgebra<6> >;
+	#endif
 #endif
 #ifdef UG_DIM_2
 	#ifdef UG_CPU_1
@@ -873,6 +878,11 @@ void PNPSmoother<TDomain, TAlgebra, TPrecond>::my_clone(SmartPtr<ILinearIterator
 		template class PNPSmoother<Domain2d, CPUBlockAlgebra<5>, GaussSeidel>;
 		//template class PNP_ILU<Domain2d, CPUBlockAlgebra<5> >;
 	#endif
+	#ifdef UG_CPU_6
+		template class PNPSmoother<Domain2d, CPUBlockAlgebra<6>, ILU>;
+		template class PNPSmoother<Domain2d, CPUBlockAlgebra<6>, GaussSeidel>;
+		//template class PNP_ILU<Domain2d, CPUBlockAlgebra<6> >;
+	#endif
 #endif
 #ifdef UG_DIM_3
 	#ifdef UG_CPU_1
@@ -884,6 +894,11 @@ void PNPSmoother<TDomain, TAlgebra, TPrecond>::my_clone(SmartPtr<ILinearIterator
 		template class PNPSmoother<Domain3d, CPUBlockAlgebra<5>, ILU>;
 		template class PNPSmoother<Domain3d, CPUBlockAlgebra<5>, GaussSeidel>;
 		//template class PNP_ILU<Domain3d, CPUBlockAlgebra<5> >;
+	#endif
+	#ifdef UG_CPU_6
+		template class PNPSmoother<Domain3d, CPUBlockAlgebra<6>, ILU>;
+		template class PNPSmoother<Domain3d, CPUBlockAlgebra<6>, GaussSeidel>;
+		//template class PNP_ILU<Domain3d, CPUBlockAlgebra<6> >;
 	#endif
 #endif
 

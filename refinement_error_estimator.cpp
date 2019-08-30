@@ -204,6 +204,17 @@ void RefinementErrorEstimator<TDomain, TAlgebra>::mark_with_strategy
 		template class RefinementErrorEstimator<Domain3d, CPUBlockAlgebra<5> >;
 	#endif
 #endif
+#ifdef UG_CPU_6
+	#ifdef UG_DIM_1
+		template class RefinementErrorEstimator<Domain1d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class RefinementErrorEstimator<Domain2d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class RefinementErrorEstimator<Domain3d, CPUBlockAlgebra<6> >;
+	#endif
+#endif
 
 
 } // namespace nernst_planck

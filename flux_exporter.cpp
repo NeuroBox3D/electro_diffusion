@@ -1118,6 +1118,17 @@ FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 		template class FluxExporter<GridFunction<Domain3d, CPUBlockAlgebra<5> > >;
 	#endif
 #endif
+#ifdef UG_CPU_6
+	#ifdef UG_DIM_1
+		template class FluxExporter<GridFunction<Domain1d, CPUBlockAlgebra<6> > >;
+	#endif
+	#ifdef UG_DIM_2
+		template class FluxExporter<GridFunction<Domain2d, CPUBlockAlgebra<6> > >;
+	#endif
+	#ifdef UG_DIM_3
+		template class FluxExporter<GridFunction<Domain3d, CPUBlockAlgebra<6> > >;
+	#endif
+#endif
 
 
 } // namespace nernst_planck

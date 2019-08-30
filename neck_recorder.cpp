@@ -1778,17 +1778,38 @@ void NeckRecorder<TDomain, TAlgebra>::record_concentrations
 
 
 // explicit template specializations
-#ifdef UG_DIM_1
-	template class NeckRecorder<Domain1d, CPUAlgebra>;
-	template class NeckRecorder<Domain1d, CPUBlockAlgebra<5> >;
+#ifdef UG_CPU_1
+	#ifdef UG_DIM_1
+		template class NeckRecorder<Domain1d, CPUAlgebra>;
+	#endif
+	#ifdef UG_DIM_2
+		template class NeckRecorder<Domain2d, CPUAlgebra>;
+	#endif
+	#ifdef UG_DIM_3
+		template class NeckRecorder<Domain3d, CPUAlgebra>;
+	#endif
 #endif
-#ifdef UG_DIM_2
-	template class NeckRecorder<Domain2d, CPUAlgebra>;
-	template class NeckRecorder<Domain2d, CPUBlockAlgebra<5> >;
+#ifdef UG_CPU_5
+	#ifdef UG_DIM_1
+		template class NeckRecorder<Domain1d, CPUBlockAlgebra<5> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class NeckRecorder<Domain2d, CPUBlockAlgebra<5> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class NeckRecorder<Domain3d, CPUBlockAlgebra<5> >;
+	#endif
 #endif
-#ifdef UG_DIM_3
-	template class NeckRecorder<Domain3d, CPUAlgebra>;
-	template class NeckRecorder<Domain3d, CPUBlockAlgebra<5> >;
+#ifdef UG_CPU_6
+	#ifdef UG_DIM_1
+		template class NeckRecorder<Domain1d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class NeckRecorder<Domain2d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class NeckRecorder<Domain3d, CPUBlockAlgebra<6> >;
+	#endif
 #endif
 
 } // namespace nernst_planck

@@ -618,6 +618,9 @@ InitUGPlugin_nernst_planck(Registry* reg, string grp)
 		#ifdef UG_CPU_5
 		CPUBlockAlgebra<5>,
 		#endif
+		#ifdef UG_CPU_6
+		CPUBlockAlgebra<6>,
+		#endif
 		end_boost_list
 	> MyCompileAlgebraList;
 

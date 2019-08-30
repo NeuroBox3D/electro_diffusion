@@ -510,6 +510,11 @@ void importSolution
 		template void exportSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
 		template void importSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
 	#endif
+	#ifdef UG_CPU_6
+		template number writeResidualsToFile<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
+	#endif
 #endif
 #ifdef UG_DIM_2
 	template void adjust_geom_after_refinement<Domain2d>(SmartPtr<ApproximationSpace<Domain2d> >, const char*, const char*);
@@ -524,6 +529,11 @@ void importSolution
 		template void exportSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
 		template void importSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
 	#endif
+	#ifdef UG_CPU_6
+		template number writeResidualsToFile<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
+	#endif
 #endif
 #ifdef UG_DIM_3
 	template void adjust_geom_after_refinement<Domain3d>(SmartPtr<ApproximationSpace<Domain3d> >, const char*, const char*);
@@ -537,6 +547,11 @@ void importSolution
 		template number writeResidualsToFile<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*);
 		template void exportSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
 		template void importSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
+	#endif
+	#ifdef UG_CPU_6
+		template number writeResidualsToFile<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const char*, const char*);
+		template void exportSolution<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
+		template void importSolution<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
 	#endif
 #endif
 

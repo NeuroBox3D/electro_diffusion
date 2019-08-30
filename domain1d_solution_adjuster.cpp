@@ -250,6 +250,17 @@ adjust_constrained(SmartPtr<GridFunction<TDomain, TAlgebra> > u)
 		template class Domain1dSolutionAdjuster<Domain3d, CPUBlockAlgebra<5> >;
 	#endif
 #endif
+#ifdef UG_CPU_6
+	#ifdef UG_DIM_1
+		template class Domain1dSolutionAdjuster<Domain1d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_2
+		template class Domain1dSolutionAdjuster<Domain2d, CPUBlockAlgebra<6> >;
+	#endif
+	#ifdef UG_DIM_3
+		template class Domain1dSolutionAdjuster<Domain3d, CPUBlockAlgebra<6> >;
+	#endif
+#endif
 
 
 
