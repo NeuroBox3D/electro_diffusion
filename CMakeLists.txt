@@ -79,16 +79,6 @@ set(SOURCES extension/domain1d_solution_adjuster.cpp
             pnp_smoother.cpp
             pnp_upwind.cpp
    )
-   
-if (APPLE)
-	set(SOURCES ${SOURCES} mem_info.cpp mem_info_apple.cpp)
-endif (APPLE)
-
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-	set(SOURCES ${SOURCES} mem_info.cpp mem_info_linux.cpp)
-endif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-
-
 
 
 if (PARALLEL)

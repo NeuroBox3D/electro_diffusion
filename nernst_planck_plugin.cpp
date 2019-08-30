@@ -60,9 +60,7 @@
 #include "pnp_upwind.h"                                     // for PNPUpwind
 #include "util/refinement_error_estimator.h"                     // for RefinementErrorEstimator
 #include "vtk_export_ho.h"                                  // for vtk_export_ho
-#if defined (__APPLE__) || defined (__linux__)
-	#include "mem_info.h"
-#endif
+
 
 using namespace std;
 using namespace ug::bridge;
@@ -570,24 +568,6 @@ static void Common(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 	}
 
-#if defined (__APPLE__) || defined (__linux__)
-	// MemInfo
-	{
-		typedef MemInfo T;
-		string name = string("MemInfo");
-		reg.add_class_<T>(name, grp)
-			.add_constructor()
-			.add_method("memory_consumption", &T::memory_consumption, "", "", "")
-			.add_method("local_resident_memory", &T::local_resident_memory, "", "", "")
-			.add_method("local_virtual_memory", &T::local_virtual_memory, "", "", "")
-			.add_method("global_resident_memory", &T::global_resident_memory, "", "", "")
-			.add_method("global_virtual_memory", &T::global_virtual_memory, "", "", "")
-			.add_method("max_resident_memory", &T::max_resident_memory, "", "", "")
-			.add_method("max_virtual_memory", &T::max_virtual_memory, "", "", "")
-
-			.set_construct_as_smart_pointer(true);
-	}
-#endif
 }
 
 
