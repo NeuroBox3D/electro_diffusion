@@ -41,10 +41,7 @@
 
 #include <cstddef>                                                  // for size_t, NULL
 #include <fstream>                                                  // for operator<<, basic_ostream, char...
-#include <limits>                                                   // for numeric_limits, numeric_limits<...
-#include <sstream>                                                  // ostringstream
 
-#include "common/assert.h"                                          // for UG_ASSERT
 #include "common/error.h"                                           // for UG_CATCH_THROW, UG_THROW, UG_CO...
 #include "lib_algebra/cpu_algebra_types.h"                          // for CPUAlgebra
 #include "lib_disc/common/function_group.h"                         // for FunctionGroup
@@ -52,9 +49,7 @@
 #include "lib_disc/dof_manager/dof_distribution.h"                  // for DoFDistribution, DoFDistributio...
 #include "lib_disc/domain.h"                                        // for Domain1d, Doma...
 #include "lib_disc/function_spaces/approximation_space.h"           // for ApproximationSpace
-#include "lib_disc/function_spaces/dof_position_util.h"             // for InnerDoFPosition
 #include "lib_disc/function_spaces/grid_function.h"                 // for GridFunction
-#include "lib_disc/local_finite_element/local_finite_element_id.h"  // for LFEID
 #include "lib_grid/grid/grid_base_object_traits.h"                  // for VertexIterator
 #include "lib_grid/grid/grid_base_objects.h"                        // for Vertex (ptr only), GridBaseObje...
 #ifdef UG_PARALLEL
@@ -62,15 +57,9 @@
 #endif
 #include "lib_grid/multi_grid.h"                                    // for MultiGrid
 #include "lib_grid/tools/grid_level.h"                              // for GridLevel, GridLevel::::TOP
-#include "lib_grid/tools/subset_group.h"                            // for SubsetGroup
 #include "lib_grid/tools/subset_handler_multi_grid.h"               // for MultiGridSubsetHandler
-#include "lib_grid/tools/surface_view.h"                            // for SurfaceView::ConstSurfaceViewEl...
 #ifdef UG_PARALLEL
 	#include "pcl/pcl_base.h"                                       // for NumProcs
-#endif
-
-#ifdef NPWithMPM
-	#include "../MembranePotentialMapping/vm2ug_rework.h"               // for Mapper
 #endif
 
 namespace ug {
@@ -250,302 +239,18 @@ void adjust_geom_after_refinement
 
 
 
-// /////////////////////// //
-// export solution command //
-// /////////////////////// //
-
-// helper function
-template <typename TGridFunction, typename TBaseElem>
-static void exportSolution
-(
-	SmartPtr<TGridFunction> solution,
-	size_t si,
-	size_t fi,
-	std::ofstream& ofs
-)
-{
-	typedef typename TGridFunction::domain_type domain_type;
-
-	// retrieve domain and dofDistr from approxSpace
-	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
-	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
-	const LFEID lfeid = dofDistr->lfeid(fi);
-
-	//	get elem iterator for current subset and elem type
-	typedef typename DoFDistribution::traits<TBaseElem>::const_iterator itType;
-	itType iter = dofDistr->template begin<TBaseElem>(si);
-	itType iterEnd = dofDistr->template end<TBaseElem>(si);
-
-	// loop over all elems
-	for (; iter != iterEnd; ++iter)
-	{
-		// get current vertex
-		TBaseElem* elem = *iter;
-
-		// get coords
-		std::vector<typename domain_type::position_type> coords;
-		InnerDoFPosition<domain_type>(coords, elem, *domain, lfeid);
-
-		// get multi-indices
-		std::vector<DoFIndex> multInd;
-		dofDistr->inner_dof_indices(elem, fi, multInd);
-
-		UG_ASSERT(coords.size() == multInd.size(), "#DoF mismatch");
-
-		// get values of DoFs
-		number val;
-		size_t nDof = multInd.size();
-		for (size_t dof = 0; dof < nDof; ++dof)
-		{
-			val = DoFRef(*solution, multInd[dof]);
-
-			// write solution to file
-			for (size_t i = 0; i < coords[dof].size(); ++i)
-				ofs << coords[dof][i] << " ";
-			ofs << val << std::endl;
-		}
-	}
-}
-
-
-template <typename TGridFunction>
-void exportSolution
-(
-	SmartPtr<TGridFunction> solution,
-	const number time,
-	const char* subsetNames,
-	const char* functionNames,
-	const char* outFileName
-)
-{
-	typedef typename TGridFunction::domain_type domain_type;
-
-	// retrieve dofDistr from solution
-	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
-
-	// get subset group to be measured on (if none provided: take all)
-	SubsetGroup ssGrp;
-	if (!*subsetNames)
-	{
-		ssGrp.set_subset_handler(dofDistr->subset_handler());
-		ssGrp.add_all();
-	}
-	else
-	{
-		try {ssGrp = dofDistr->subset_grp_by_name(subsetNames);}
-		UG_CATCH_THROW("At least one of the subsets in '" << subsetNames
-				<< "' is not contained in the approximation space (or something else was wrong).");
-	}
-
-	// get function group to be measured (if none provided: take all)
-	FunctionGroup fctGrp;
-	if (!*functionNames)
-	{
-		fctGrp.set_function_pattern(dofDistr->function_pattern());
-		fctGrp.add_all();
-	}
-	else
-	{
-		try {fctGrp = dofDistr->fct_grp_by_name(functionNames);}
-		UG_CATCH_THROW("At least one of the functions in '" << functionNames
-						<< "' is not contained in the approximation space (or something else was wrong).");
-	}
-
-	// loop functions
-	for (size_t fi = 0; fi < fctGrp.size(); fi++)
-	{
-		// construct outFile name
-		std::ostringstream ofnss(outFileName, std::ios_base::app);
-		ofnss << "_" << time << "_" << fctGrp.name(fi);
-
-		// create if first time step, append otherwise
-		std::ofstream outFile;
-		outFile.precision(std::numeric_limits<number>::digits10);
-		outFile.open(ofnss.str().c_str(), std::ios_base::out);
-		if (!outFile.is_open())
-			UG_THROW("Output file '" << ofnss.str() << "' could not be opened.")
-
-		try
-		{
-			// loop subsets
-			for (size_t si = 0; si < ssGrp.size(); si++)
-			{
-				if (domain_type::dim-1 >= VERTEX && dofDistr->max_fct_dofs(fctGrp[fi], VERTEX, ssGrp[si]) > 0)
-					exportSolution<TGridFunction, Vertex>(solution, ssGrp[si], fctGrp[fi], outFile);
-				if (domain_type::dim-1 >= EDGE && dofDistr->max_fct_dofs(fctGrp[fi], EDGE, ssGrp[si]) > 0)
-					exportSolution<TGridFunction, Edge>(solution, ssGrp[si], fctGrp[fi], outFile);
-				if (domain_type::dim-1 >= FACE && dofDistr->max_fct_dofs(fctGrp[fi], FACE, ssGrp[si]) > 0)
-					exportSolution<TGridFunction, Face>(solution, ssGrp[si], fctGrp[fi], outFile);
-				if (domain_type::dim-1 >= VOLUME && dofDistr->max_fct_dofs(fctGrp[fi], VOLUME, ssGrp[si]) > 0)
-					exportSolution<TGridFunction, Volume>(solution, ssGrp[si], fctGrp[fi], outFile);
-			}
-		}
-		UG_CATCH_THROW("Output file '" << ofnss.str() << "' could not be written to.");
-
-		outFile.close();
-	}
-
-	return;
-}
-
-
-
-// /////////////////////// //
-// import solution command //
-// /////////////////////// //
-
-#ifdef NPWithMPM
-// helper function
-template <typename TGridFunction, typename TBaseElem>
-static void importSolution
-(
-	SmartPtr<TGridFunction> solution,
-	size_t si,
-	size_t fi,
-	const Mapper<TGridFunction::domain_type::dim, number>& mapper
-)
-{
-	typedef typename TGridFunction::domain_type domain_type;
-
-	// retrieve domain and dofDistr from approxSpace
-	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
-	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
-	const LFEID lfeid = dofDistr->lfeid(fi);
-
-	//	get elem iterator for current subset and elem type
-	typedef typename DoFDistribution::traits<TBaseElem>::const_iterator itType;
-	itType iter = dofDistr->template begin<TBaseElem>(si);
-	itType iterEnd = dofDistr->template end<TBaseElem>(si);
-
-	// loop over all elems
-	for (; iter != iterEnd; ++iter)
-	{
-		// get current vertex
-		TBaseElem* elem = *iter;
-
-		// get coords
-		std::vector<typename domain_type::position_type> coords;
-		InnerDoFPosition<domain_type>(coords, elem, *domain, lfeid);
-
-		// get multi-indices
-		std::vector<DoFIndex> multInd;
-		dofDistr->inner_dof_indices(elem, fi, multInd);
-
-		UG_ASSERT(coords.size() == multInd.size(), "#DoF mismatch");
-
-		// get values of DoFs
-		number val;
-		size_t nDof = multInd.size();
-		for (size_t dof = 0; dof < nDof; ++dof)
-		{
-			// get value from provider
-			try {val = mapper.get_data_from_nearest_neighbor(coords[dof]);}
-			UG_CATCH_THROW("No value could be retrieved for DoF at " << coords[dof]);
-
-			DoFRef(*solution, multInd[dof]) = val;
-		}
-	}
-}
-#endif
-
-template <typename TGridFunction>
-void importSolution
-(
-	SmartPtr<TGridFunction> solution,
-	const char* subsetNames,
-	const char* functionNames,
-	const char* inFileBaseName
-)
-{
-#ifndef NPWithMPM
-	UG_THROW("importSolution uses functionality from the MembranePotentialMapping plugin,"
-		"but ewas not compiled with it.");
-#else
-	typedef typename TGridFunction::domain_type domain_type;
-	typedef typename domain_type::position_type pos_type;
-
-	ConstSmartPtr<domain_type> domain = solution->approx_space()->domain();
-	ConstSmartPtr<DoFDistribution> dofDistr = solution->dof_distribution();
-
-	// get subset group to be measured on
-	SubsetGroup ssGrp;
-	if (!*subsetNames)
-	{
-		ssGrp.set_subset_handler(dofDistr->subset_handler());
-		ssGrp.add_all();
-	}
-	else
-	{
-		try {ssGrp = dofDistr->subset_grp_by_name(subsetNames);}
-		UG_CATCH_THROW("At least one of the subsets in '" << subsetNames
-				<< "' is not contained in the approximation space (or something else was wrong).");
-	}
-
-	// get function group to be measured (if none provided: take all)
-	FunctionGroup fctGrp;
-	if (!*functionNames)
-	{
-		fctGrp.set_function_pattern(dofDistr->function_pattern());
-		fctGrp.add_all();
-	}
-	else
-	{
-		try {fctGrp = dofDistr->fct_grp_by_name(functionNames);}
-		UG_CATCH_THROW("At least one of the functions in '" << functionNames
-						<< "' is not contained in the approximation space (or something else was wrong).");
-	}
-
-
-	// loop functions
-	for (size_t fi = 0; fi < fctGrp.size(); fi++)
-	{
-		// construct inFile name
-		std::ostringstream ofnss(inFileBaseName, std::ios_base::app);
-		ofnss << "_" << fctGrp.name(fi);
-
-		// read values from file and fill mapper structure with it
-		Mapper<domain_type::dim, number> valueProvider;
-		try {valueProvider.build_tree(ofnss.str(), " ");}
-		UG_CATCH_THROW("Underlying mapper object could not build its tree "
-					   "on given file (" << ofnss.str() << ").");
-
-		// loop subsets
-		for (size_t si = 0; si < ssGrp.size(); si++)
-		{
-			if (domain_type::dim-1 >= VERTEX && dofDistr->max_fct_dofs(fctGrp[fi], VERTEX, ssGrp[si]) > 0)
-				importSolution<TGridFunction, Vertex>(solution, ssGrp[si], fctGrp[fi], valueProvider);
-			if (domain_type::dim-1 >= EDGE && dofDistr->max_fct_dofs(fctGrp[fi], EDGE, ssGrp[si]) > 0)
-				importSolution<TGridFunction, Edge>(solution, ssGrp[si], fctGrp[fi], valueProvider);
-			if (domain_type::dim-1 >= FACE && dofDistr->max_fct_dofs(fctGrp[fi], FACE, ssGrp[si]) > 0)
-				importSolution<TGridFunction, Face>(solution, ssGrp[si], fctGrp[fi], valueProvider);
-			if (domain_type::dim-1 >= VOLUME && dofDistr->max_fct_dofs(fctGrp[fi], VOLUME, ssGrp[si]) > 0)
-				importSolution<TGridFunction, Volume>(solution, ssGrp[si], fctGrp[fi], valueProvider);
-		}
-	}
-#endif
-}
-
-
-
-
 // template specializations
 #ifdef UG_DIM_1
 	template void adjust_geom_after_refinement<Domain1d>(SmartPtr<ApproximationSpace<Domain1d> >, const char*, const char*);
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain1d, CPUAlgebra> >(SmartPtr<GridFunction<Domain1d, CPUAlgebra> >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_5
 		template number writeResidualsToFile<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain1d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_6
 		template number writeResidualsToFile<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain1d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain1d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
 	#endif
 #endif
 #ifdef UG_DIM_2
@@ -553,18 +258,12 @@ void importSolution
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain2d, CPUAlgebra> >(SmartPtr<GridFunction<Domain2d, CPUAlgebra> >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_5
 		template number writeResidualsToFile<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain2d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_6
 		template number writeResidualsToFile<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain2d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain2d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
 	#endif
 #endif
 #ifdef UG_DIM_3
@@ -572,18 +271,12 @@ void importSolution
 
 	#ifdef UG_CPU_1
 		template number writeResidualsToFile<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain3d, CPUAlgebra> >(SmartPtr<GridFunction<Domain3d, CPUAlgebra> >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_5
 		template number writeResidualsToFile<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain3d, CPUBlockAlgebra<5> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<5> > >, const char*, const char*, const char*);
 	#endif
 	#ifdef UG_CPU_6
 		template number writeResidualsToFile<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const char*, const char*);
-		template void exportSolution<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const number, const char*, const char*, const char*);
-		template void importSolution<GridFunction<Domain3d, CPUBlockAlgebra<6> > >(SmartPtr<GridFunction<Domain3d, CPUBlockAlgebra<6> > >, const char*, const char*, const char*);
 	#endif
 #endif
 

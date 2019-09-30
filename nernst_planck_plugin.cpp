@@ -109,20 +109,6 @@ static void DomainAlgebra(Registry& reg, string grp)
 			"and returns squared 2-norm of residual vector");
 	}
 
-	// export/import solution
-	{
-		reg.add_function("export_solution", &exportSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
-			"", "solution#time#subsetNames#functionNames#outFileName",
-			"outputs solutions to file");
-
-		reg.add_function("import_solution", &importSolution<GridFunction<TDomain, TAlgebra> >, grp.c_str(),
-			"", "solution#subset names#function name#input file name",
-			"writes values for the given function and on the given subsets "
-			"from the given file to the given solution vector "
-			"(using the value of the nearest neighbor for each vertex)");
-	}
-
-
 	// interface (in the sense of programming) for the nD/1D interface (in the sense of manifold) class
 	{
 		typedef Interface1D<TDomain, TAlgebra> T;
