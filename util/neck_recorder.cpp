@@ -160,6 +160,7 @@ static int hangingCornerState
 }
 
 
+// default implementation (valid for 2d)
 template <typename TDomain>
 static int hangingCornerStateCoarse
 (
@@ -204,6 +205,62 @@ int hangingCornerStateCoarse<Domain1d>
 )
 {
 	UG_THROW("There can be no 1d hanging nodes.");
+}
+#endif
+
+#ifdef UG_DIM_3
+template <>
+int hangingCornerStateCoarse<Domain3d>
+(
+	const Domain3d::position_type& coords,
+	number thresh,
+	grid_dim_traits<Domain3d::dim>::element_type* elem,
+	ConstSmartPtr<Domain3d> dom,
+	number refLenSq
+)
+{
+	// find constraining edge
+	const Domain3d::position_accessor_type aaPos = dom->position_accessor();
+	size_t ne = elem->num_edges();
+	EdgeDescriptor ed;
+	size_t e = 0;
+	Domain3d::position_type eCenter;
+	for (; e < ne; ++e)
+	{
+		ed = elem->edge_desc(e);
+		VecScaleAdd(eCenter, 0.5, aaPos[ed.vertex(0)], 0.5, aaPos[ed.vertex(1)]);
+		if (VecDistanceSq(eCenter, coords) < 1e-6 * refLenSq)
+			break;
+	}
+	if (e != ne)
+	{
+		// now investigate its vertices
+		int state = cornerState(aaPos[ed.vertex(0)][Domain3d::dim-1], thresh);
+		state |= cornerState(aaPos[ed.vertex(1)][Domain3d::dim-1], thresh);
+
+		return state;
+	}
+
+	// if no edge found, find constraining face
+	size_t nf = elem->num_faces();
+	FaceDescriptor fd;
+	size_t f = 0;
+	for (; f < nf; ++f)
+	{
+		fd = elem->face_desc(f);
+		eCenter = CalculateCenter(&fd, aaPos);
+		if (VecDistanceSq(eCenter, coords) < 1e-6 * refLenSq)
+			break;
+	}
+	UG_COND_THROW(f == nf, "Neither any edge nor any face center is located "
+		"at the hanging node's position.");
+
+	int state = cornerState(aaPos[fd.vertex(0)][Domain3d::dim-1], thresh);
+	const size_t nVrt = fd.num_vertices();
+	for (size_t v = 1; v < nVrt; ++v)
+		state |= cornerState(aaPos[fd.vertex(v)][Domain3d::dim-1], thresh);
+
+	return state;
 }
 #endif
 
@@ -256,6 +313,36 @@ void elem_edge_connections<Tetrahedron>(std::vector<std::vector<size_t> >& vConn
 
 	vConn[2].resize(1);
 	vConn[2][0] = 3;
+}
+
+template <>
+void elem_edge_connections<Hexahedron>(std::vector<std::vector<size_t> >& vConn)
+{
+	vConn[0].resize(3);
+	vConn[0][0] = 1;
+	vConn[0][1] = 3;
+	vConn[0][2] = 4;
+
+	vConn[1].resize(2);
+	vConn[1][0] = 2;
+	vConn[1][1] = 5;
+
+	vConn[2].resize(2);
+	vConn[2][0] = 3;
+	vConn[2][1] = 6;
+
+	vConn[3].resize(1);
+	vConn[3][0] = 7;
+
+	vConn[4].resize(2);
+	vConn[4][0] = 5;
+	vConn[4][1] = 7;
+
+	vConn[5].resize(1);
+	vConn[5][0] = 6;
+
+	vConn[6].resize(1);
+	vConn[6][0] = 7;
 }
 
 template <>
@@ -330,6 +417,8 @@ static void calculate_intersection_corners
 	// determine exact element type and get edge connections
 	if (dynamic_cast<Tetrahedron*>(vol))
 		elem_edge_connections<Tetrahedron>(vConn);
+	else if (dynamic_cast<Hexahedron*>(vol))
+		elem_edge_connections<Hexahedron>(vConn);
 	else if (dynamic_cast<Prism*>(vol))
 		elem_edge_connections<Prism>(vConn);
 	else if (dynamic_cast<Triangle*>(vol))
@@ -949,6 +1038,8 @@ void eval_shapes_and_grads<Domain3d>
 {
 	if (dynamic_cast<Tetrahedron*>(vol))
 		eval_shapes_and_grads<Domain3d, Tetrahedron>(iv, vPts, vol, aaPos);
+	else if (dynamic_cast<Hexahedron*>(vol))
+		eval_shapes_and_grads<Domain3d, Hexahedron>(iv, vPts, vol, aaPos);
 	else if (dynamic_cast<Prism*>(vol))
 		eval_shapes_and_grads<Domain3d, Prism>(iv, vPts, vol, aaPos);
 	else
