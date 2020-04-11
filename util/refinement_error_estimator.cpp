@@ -69,9 +69,7 @@ number RefinementErrorEstimator<TDomain, TAlgebra>::
 compute_elementwise_errors(SmartPtr<TGridFunction> uFine, SmartPtr<TGridFunction> uCoarse, size_t cmp)
 {
 	SmartPtr<MultiGrid> spMG = uFine->domain()->grid();
-	if (!spMG->has_attachment<elem_type>(m_aError))
-		spMG->template attach_to_dv<elem_type>(m_aError, -1.0);
-	m_aaError = aa_type(*spMG, m_aError);
+	m_mgElemErrors.attach_indicators(spMG);
 
 	// prepare error computation
 	//L2DistIntegrand<TGridFunction> integrand(*uFine, cmp, *uCoarse, cmp);
@@ -87,7 +85,7 @@ compute_elementwise_errors(SmartPtr<TGridFunction> uFine, SmartPtr<TGridFunction
 
 	// compute errors
 	number diffNormSq = 0.0;
-	try {diffNormSq = Integrate<dim, dim>(it, itEnd, aaPos, integrand, quadOrder, "best", &m_aaError);}
+	try {diffNormSq = Integrate<dim, dim>(it, itEnd, aaPos, integrand, quadOrder, "best", &m_mgElemErrors.errors());}
 	UG_CATCH_THROW("Failed trying to calculate element errors via Integrate().");
 
 	m_bErrorsCalculated = true;
@@ -186,7 +184,7 @@ RefinementErrorEstimator<TDomain, TAlgebra>::error_grid_function(SmartPtr<TDomai
 			"for piecewise constant approximation space.")
 
 		// assign error value
-		DoFRef(*u_vtk, vDI[0]) = m_aaError[*it];
+		DoFRef(*u_vtk, vDI[0]) = m_mgElemErrors.error(*it);
 	}
 
 	return u_vtk;
@@ -206,7 +204,7 @@ void RefinementErrorEstimator<TDomain, TAlgebra>::mark_with_strategy
 
 	// mark elements for coarsening
 	UG_COND_THROW(!markingStrategy.valid(), "No valid marking strategy given.")
-	markingStrategy->mark(m_aaError, refiner, m_spDD);
+	markingStrategy->mark(m_mgElemErrors, refiner, m_spDD);
 
 	m_bErrorsCalculated = false;
 }

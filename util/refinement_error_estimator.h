@@ -87,8 +87,7 @@ class RefinementErrorEstimator
 
 		ConstSmartPtr<DoFDistribution> m_spDD;
 
-		Attachment<number> m_aError;
-		aa_type m_aaError;
+		IMultigridElementIndicators<TDomain> m_mgElemErrors;  // holding the indicators
 
 		bool m_bErrorsCalculated;
 };
