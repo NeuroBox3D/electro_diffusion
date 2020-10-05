@@ -154,7 +154,7 @@ class FluxExporter
 			AssembleWrapper
 			(
 				FluxExporter<TGridFunction>* _flEx,
-				SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > _flux,
+				SmartPtr<GridFunction<dom_type, CPUAlgebra> > _flux,
 				SmartPtr<GridFunction<dom_type, CPUAlgebra> > _vol,
 				int _si
 			)
@@ -167,7 +167,7 @@ class FluxExporter
 			}
 
 			FluxExporter<TGridFunction>* flEx;
-			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux;
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux;
 			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol;
 			int si;
 		};
@@ -177,7 +177,7 @@ class FluxExporter
 		template <bool hanging, int order, typename TElem>
 		void assemble
 		(
-			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 			int si
 		);
@@ -185,7 +185,7 @@ class FluxExporter
 		template <int order>
 		void assemble
 		(
-			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
 		);
 
@@ -289,13 +289,13 @@ class FluxExporter
 		template <typename TBaseElem>
 		void div_flux_by_vol_and_scale
 		(
-			SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+			SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 			SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 			number scale_factor
 		);
 
 
-		SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUBlockAlgebra<TGridFunction::domain_type::dim> > >
+		SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUAlgebra> >
 		calc_flux(number scale_factor);
 
 	protected:
@@ -339,7 +339,7 @@ class FluxExporter
 		//typedef std::vector<std::pair<MathVector<dim>, MathVector<dim> > > FluxMap;
 		//FluxMap m_fluxMap;
 
-		SmartPtr<IDomainConstraint<dom_type, CPUBlockAlgebra<dim> > > m_hangingConstraintFlux;
+		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintFlux;
 		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintVol;
 		SmartPtr<IDomainConstraint<dom_type, CPUAlgebra> > m_hangingConstraintBoxFlux;
 

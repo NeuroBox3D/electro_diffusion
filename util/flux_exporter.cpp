@@ -145,7 +145,7 @@ void FluxExporter<TGridFunction>::set_hanging_constraint(SmartPtr<IDomainConstra
 	AsymHC* hca = dynamic_cast<AsymHC*>(constr.get());
 	if (hca)
 	{
-		m_hangingConstraintFlux = make_sp(new OneSideP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
+		m_hangingConstraintFlux = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
 		m_hangingConstraintVol = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
 		m_hangingConstraintBoxFlux = make_sp(new OneSideP1Constraints<dom_type, CPUAlgebra>());
 		return;
@@ -155,7 +155,7 @@ void FluxExporter<TGridFunction>::set_hanging_constraint(SmartPtr<IDomainConstra
 	SymHC* hcs = dynamic_cast<SymHC*>(constr.get());
 	if (hcs)
 	{
-		m_hangingConstraintFlux = make_sp(new SymP1Constraints<dom_type, CPUBlockAlgebra<dim> >());
+		m_hangingConstraintFlux = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
 		m_hangingConstraintVol = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
 		m_hangingConstraintBoxFlux = make_sp(new SymP1Constraints<dom_type, CPUAlgebra>());
 		return;
@@ -278,7 +278,7 @@ void FluxExporter<TGridFunction>::write_flux
 	UG_COND_THROW(m_convConst != m_convConst, "No convection constant (!= 0) specified.");
 
 	// calculate flux as vector-valued grid function
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux;
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux;
 	try {flux = calc_flux(scale_factor);}
 	UG_CATCH_THROW("Error during flux calculation.")
 
@@ -290,7 +290,7 @@ void FluxExporter<TGridFunction>::write_flux
 	vtkOutput->clear_selection();
 	vtkOutput->select(flux_cmp_names, fluxName.c_str());
 
-	try {vtk_export_ho<GridFunction<dom_type, CPUBlockAlgebra<dim> >, dim>
+	try {vtk_export_ho<GridFunction<dom_type, CPUAlgebra>, dim>
 		(flux, flux_cmp_names, m_lfeid.order(), vtkOutput, filename.c_str(), step, time, m_sg);}
 	UG_CATCH_THROW("Error during vtk export.")
 
@@ -328,7 +328,7 @@ void FluxExporter<TGridFunction>::write_box_fluxes
 
 	// resize matrix
 	SmartPtr<ApproximationSpace<dom_type> > approxFlux =
-		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 1)));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), CPUAlgebra::get_type()));
 	std::vector<std::string> vol_cmp_names(1);
 	vol_cmp_names[0] = "flux";
 	try {approxFlux->add(vol_cmp_names, m_lfeid, m_vSubset);}
@@ -823,7 +823,7 @@ template <typename TGridFunction>
 template <bool hanging, int order, typename TElem>
 void FluxExporter<TGridFunction>::assemble
 (
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 	int si
 )
@@ -926,7 +926,7 @@ template <typename TGridFunction>
 template <int order>
 void FluxExporter<TGridFunction>::assemble
 (
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
 )
 {
@@ -971,7 +971,7 @@ template <typename TGridFunction>
 template <typename TBaseElem>
 void FluxExporter<TGridFunction>::div_flux_by_vol_and_scale
 (
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux,
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux,
 	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol,
 	number scale_factor
 )
@@ -1049,12 +1049,12 @@ void FluxExporter<TGridFunction>::add_side_subsets
 }
 
 template <typename TGridFunction>
-SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUBlockAlgebra<TGridFunction::domain_type::dim> > >
+SmartPtr<GridFunction<typename TGridFunction::domain_type, CPUAlgebra> >
 FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 {
 	// set up approx space with flux function of the same order as solution grid function
 	SmartPtr<ApproximationSpace<dom_type> > approxFlux =
-		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, dim)));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), CPUAlgebra::get_type()));
 
 	std::vector<std::string> flux_cmp_names(dim);
 	if (dim >= 1) flux_cmp_names[0] = std::string("flux_x");
@@ -1067,7 +1067,7 @@ FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 
 	// set up approx space for box volumes
 	SmartPtr<ApproximationSpace<dom_type> > approxVol =
-		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), AlgebraType(AlgebraType::CPU, 1)));
+		make_sp(new ApproximationSpace<dom_type>(m_u->approx_space()->domain(), CPUAlgebra::get_type()));
 	std::vector<std::string> vol_cmp_names(1);
 	vol_cmp_names[0] = std::string("vol");
 	try {approxVol->add(vol_cmp_names, m_lfeid, m_vSubset);}
@@ -1076,8 +1076,8 @@ FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 
 
 	// create flux and volume grid functions from their respective approx spaces
-	SmartPtr<GridFunction<dom_type, CPUBlockAlgebra<dim> > > flux
-		= make_sp(new GridFunction<dom_type, CPUBlockAlgebra<dim> >(approxFlux));
+	SmartPtr<GridFunction<dom_type, CPUAlgebra> > flux
+		= make_sp(new GridFunction<dom_type, CPUAlgebra>(approxFlux));
 	SmartPtr<GridFunction<dom_type, CPUAlgebra> > vol
 		= make_sp(new GridFunction<dom_type, CPUAlgebra>(approxVol));
 	flux->set(0.0);	// in order to init CONSISTENT
@@ -1101,8 +1101,8 @@ FluxExporter<TGridFunction>::calc_flux(number scale_factor)
 	if (m_hangingConstraintFlux.valid())
 	{
 		m_hangingConstraintFlux->set_approximation_space(approxFlux);
-		m_hangingConstraintFlux->set_ass_tuner(make_sp(new AssemblingTuner<CPUBlockAlgebra<dim> >())); // dummy
-		GridFunction<dom_type, CPUBlockAlgebra<dim> > dummy(approxFlux, false); // not needed in adjust_defect
+		m_hangingConstraintFlux->set_ass_tuner(make_sp(new AssemblingTuner<CPUAlgebra>())); // dummy
+		GridFunction<dom_type, CPUAlgebra> dummy(approxFlux, false); // not needed in adjust_defect
 		m_hangingConstraintFlux->adjust_defect(*flux, dummy, flux->dd(), CT_HANGING);
 	}
 	if (m_hangingConstraintVol.valid())
