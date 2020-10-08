@@ -44,6 +44,7 @@
 #include <cstddef>  // for size_t
 
 #include "common/util/smart_pointer.h"  // for SmartPtr
+#include "lib_algebra/cpu_algebra_types.h"  // for CPUAlgebra
 #include "lib_grid/grid_objects/grid_dim_traits.h"  // for grid_dim_traits
 #include "lib_grid/grid/grid.h"  // for AttachmentAccessor
 #include "lib_grid/refinement/refiner_interface.h"  // for IRefiner
@@ -60,6 +61,7 @@ class RefinementErrorEstimator
 	public:
 		static const int dim = TDomain::dim;
 		typedef GridFunction<TDomain, TAlgebra> TGridFunction;
+		typedef GridFunction<TDomain, CPUAlgebra> TErrorGridFunction;
 
 	public:
 		RefinementErrorEstimator();
@@ -72,7 +74,7 @@ class RefinementErrorEstimator
 			size_t cmp
 		);
 
-		SmartPtr<TGridFunction> error_grid_function(SmartPtr<TDomain> dom);
+		SmartPtr<TErrorGridFunction> error_grid_function(SmartPtr<TDomain> dom);
 
 		void mark_with_strategy
 		(

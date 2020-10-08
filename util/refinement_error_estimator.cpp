@@ -155,7 +155,7 @@ compute_elementwise_errors(SmartPtr<TGridFunction> uFine, SmartPtr<TGridFunction
 
 
 template <typename TDomain, typename TAlgebra>
-SmartPtr<typename RefinementErrorEstimator<TDomain, TAlgebra>::TGridFunction>
+SmartPtr<typename RefinementErrorEstimator<TDomain, TAlgebra>::TErrorGridFunction>
 RefinementErrorEstimator<TDomain, TAlgebra>::error_grid_function(SmartPtr<TDomain> dom)
 {
 	// check that error indicators have been calculated
@@ -165,9 +165,9 @@ RefinementErrorEstimator<TDomain, TAlgebra>::error_grid_function(SmartPtr<TDomai
 	typedef typename DoFDistribution::dim_traits<dim>::const_iterator elem_it;
 
 	SmartPtr<ApproximationSpace<TDomain> > spApprox =
-		make_sp(new ApproximationSpace<TDomain>(dom, AlgebraType(AlgebraType::CPU, 1)));
+		make_sp(new ApproximationSpace<TDomain>(dom, CPUAlgebra::get_type()));
 	spApprox->add("eta2", "piecewise-constant");
-	SmartPtr<TGridFunction> u_vtk = make_sp(new TGridFunction(spApprox));
+	SmartPtr<TErrorGridFunction> u_vtk = make_sp(new TErrorGridFunction(spApprox));
 	u_vtk->set(0.0);
 
 	std::vector<DoFIndex> vDI;
