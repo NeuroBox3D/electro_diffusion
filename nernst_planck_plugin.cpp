@@ -58,7 +58,7 @@
 #include "util/order.h"                                     // for reorder_dof_distros_lex, reorder_dofs
 #include "pnp_smoother.h"                                   // for PNPSmoother, PNP_ILU
 #include "pnp_upwind.h"                                     // for PNPUpwind
-#include "util/refinement_error_estimator.h"                     // for RefinementErrorEstimator
+#include "util/refinement_error_estimator.h"                // for RefinementErrorEstimator
 
 
 using namespace std;
@@ -293,7 +293,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_constructor()
 			.add_method("compute_elementwise_errors", &T::compute_elementwise_errors, "", "uFine # uCoarse # cmp", "", "")
 			.add_method("mark_with_strategy", &T::mark_with_strategy, "", "refiner # strategy", "", "")
+#ifdef UG_CPU_1
 			.add_method("error_grid_function", &T::error_grid_function, "", "domain", "", "")
+#endif
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, nameBase, tag);
 	}
